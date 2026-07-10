@@ -1,0 +1,56 @@
+# ============================================================
+# CodePilot RAG — Backend Dependencies
+# ============================================================
+
+# FastAPI
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+aiofiles==24.1.0
+
+# LangChain & LangGraph
+langchain==0.3.13
+langchain-core==0.3.28
+langchain-community==0.3.13
+langchain-google-genai==2.0.7
+langchain-openai==0.2.14
+langgraph==0.2.60
+langgraph-checkpoint-mongodb==0.1.1
+
+# Vector Store
+chromadb>=1.5.9
+
+# Embeddings
+google-generativeai==0.8.3
+openai==1.58.1
+
+# MongoDB
+motor==3.6.0
+pymongo==4.9.1
+beanie==1.27.0
+
+# File Processing
+GitPython==3.1.43
+python-magic==0.4.27
+chardet==5.2.0
+tree-sitter==0.23.2
+
+# Utilities
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+httpx==0.28.1
+rich==13.9.4
+structlog==24.4.0
+
+# Diff / Patch
+unidiff==0.7.5
+
+# Background Jobs
+celery==5.4.0
+redis==5.2.0
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1
