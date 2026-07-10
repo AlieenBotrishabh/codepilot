@@ -8,6 +8,8 @@ __pycache__/
 node_modules/
 .next/
 dist/
+.vercel/
+
 
 # Database / Storage / Uploads
 backend/chroma_data/
