@@ -1,9 +1,16 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
   title: "CodePilot RAG — Autonomous Coding Copilot",
-  description: "Repository understanding, debugging, and patch generation pipeline powered by LangGraph.",
+  description:
+    "Repository understanding, debugging, and patch generation pipeline powered by LangGraph.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -13,8 +20,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-white text-[#09090b] antialiased">{children}</body>
     </html>
   );
 }
-// 

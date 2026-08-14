@@ -9,7 +9,7 @@ import {
   Code,
   Terminal,
   Sparkles,
-  CheckCircle,
+  CheckCircle2,
   AlertTriangle,
   GitPullRequest,
   Loader2,
@@ -27,24 +27,25 @@ import {
   Bug,
   Eye,
   Book,
+  X,
 } from "lucide-react";
 import { api, Message, Thread, RepoInfo } from "../../lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 const THEMES = [
-  { id: "nebula",  color: "#9333ea" },
-  { id: "aurora",  color: "#10b981" },
-  { id: "sunset",  color: "#f97316" },
-  { id: "ocean",   color: "#3b82f6" },
+  { id: "nebula",  color: "#7c3aed" },
+  { id: "aurora",  color: "#059669" },
+  { id: "sunset",  color: "#ea580c" },
+  { id: "ocean",   color: "#2563eb" },
 ];
 
 const MODES = [
-  { value: "auto",          label: "Auto Router",          icon: <Zap size={13} />,        desc: "Smart mode selection" },
-  { value: "question",      label: "Q&A",                  icon: <HelpCircle size={13} />, desc: "Ask anything" },
-  { value: "debug",         label: "Debug",                icon: <Bug size={13} />,         desc: "Find & fix bugs" },
-  { value: "patch",         label: "Patch Generator",      icon: <Shield size={13} />,      desc: "Generate code patches" },
-  { value: "review",        label: "Code Review",          icon: <Eye size={13} />,         desc: "Review code quality" },
-  { value: "architecture",  label: "Architecture",         icon: <Book size={13} />,        desc: "Explain architecture" },
+  { value: "auto",          label: "Auto Router",          icon: <Zap className="w-3.5 h-3.5" />,        desc: "Smart mode selection" },
+  { value: "question",      label: "Q&A",                  icon: <HelpCircle className="w-3.5 h-3.5" />, desc: "Ask anything" },
+  { value: "debug",         label: "Debug",                icon: <Bug className="w-3.5 h-3.5" />,         desc: "Find & fix bugs" },
+  { value: "patch",         label: "Patch Generator",      icon: <Shield className="w-3.5 h-3.5" />,      desc: "Generate code patches" },
+  { value: "review",        label: "Code Review",          icon: <Eye className="w-3.5 h-3.5" />,         desc: "Review code quality" },
+  { value: "architecture",  label: "Architecture",         icon: <Book className="w-3.5 h-3.5" />,        desc: "Explain architecture" },
 ];
 
 interface Toast { id: string; msg: string; type: "success" | "error" | "info"; }
@@ -212,27 +213,27 @@ function MessageContent({ content, mode }: { content: string; mode?: string }) {
 
   // Mode-specific accent colour for the left border
   const modeColor: Record<string, string> = {
-    question:     "var(--primary)",
-    debug:        "#ef4444",
-    patch:        "#8b5cf6",
-    review:       "#f59e0b",
-    architecture: "var(--secondary)",
+    question:     "#7c3aed",
+    debug:        "#dc2626",
+    patch:        "#4f46e5",
+    review:       "#d97706",
+    architecture: "#0891b2",
   };
-  const accent = mode ? (modeColor[mode] || "var(--border-glass)") : "var(--border-glass)";
+  const accent = mode ? (modeColor[mode] || "#e5e7eb") : "#e5e7eb";
 
   return (
-    <div style={{ position: "relative" }}>
+    <div className="relative group/msg">
       <div
         className="message-content"
-        style={{ borderLeft: `3px solid ${accent}`, paddingLeft: 12 }}
+        style={{ borderLeft: `2px solid ${accent}`, paddingLeft: 12 }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
       <button
         onClick={handleCopy}
-        style={cs.copyMsgBtn}
+        className="ghost absolute top-0 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity !bg-white !border !border-gray-200"
         title="Copy message"
       >
-        {copied ? <Check size={12} /> : <Copy size={12} />}
+        {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
       </button>
     </div>
   );
@@ -282,6 +283,9 @@ function ChatWorkspace() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState("nebula");
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Display-only: filter the thread list
+  const [threadSearch, setThreadSearch] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
@@ -483,22 +487,22 @@ function ChatWorkspace() {
   const renderPatchDiff = (diff: string) => {
     const lines = diff.split("\n");
     return (
-      <div style={cs.diffWrapper}>
+      <div className="font-mono text-xs leading-relaxed">
         {lines.map((line, idx) => {
           let bg = "transparent";
-          let color = "var(--text-secondary)";
+          let color = "#374151";
           if (line.startsWith("+") && !line.startsWith("+++")) {
-            bg = "rgba(16,185,129,0.1)"; color = "#a7f3d0";
+            bg = "#ecfdf5"; color = "#065f46";
           } else if (line.startsWith("-") && !line.startsWith("---")) {
-            bg = "rgba(239,68,68,0.1)"; color = "#fca5a5";
+            bg = "#fef2f2"; color = "#991b1b";
           } else if (line.startsWith("@@")) {
-            bg = "rgba(59,130,246,0.1)"; color = "#93c5fd";
+            bg = "#eff6ff"; color = "#1d4ed8";
           } else if (line.startsWith("diff") || line.startsWith("index") || line.startsWith("---") || line.startsWith("+++")) {
-            color = "var(--text-muted)";
+            color = "#9ca3af";
           }
           return (
-            <div key={idx} style={{ ...cs.diffLine, background: bg, color }}>
-              <span style={cs.diffLineNum}>{idx + 1}</span>
+            <div key={idx} className="diff-line flex gap-3 px-3 whitespace-pre" style={{ background: bg, color }}>
+              <span className="w-9 text-right flex-shrink-0 select-none text-gray-300">{idx + 1}</span>
               <span>{line || " "}</span>
             </div>
           );
@@ -509,6 +513,10 @@ function ChatWorkspace() {
 
   const filteredFiles = filesList.filter(f =>
     f.toLowerCase().includes(fileSearch.toLowerCase())
+  );
+
+  const visibleThreads = threads.filter(t =>
+    (t.title || "Untitled Thread").toLowerCase().includes(threadSearch.toLowerCase())
   );
 
   // Auto-resize textarea
@@ -526,103 +534,121 @@ function ChatWorkspace() {
   };
 
   return (
-    <div style={cs.workspace}>
+    <div className="flex h-screen w-screen overflow-hidden bg-white">
 
-      {/* ── Sidebar ──────────────────────────────────────────────────── */}
+      {/* ══ SIDEBAR ═════════════════════════════════════════════════════ */}
       <aside
+        className="flex flex-col flex-shrink-0 h-screen overflow-hidden border-r border-gray-200 bg-gray-50"
         style={{
-          ...cs.sidebar,
-          width: sidebarCollapsed ? 56 : 260,
+          width: sidebarCollapsed ? 60 : 268,
           transition: "width 0.3s cubic-bezier(0.4,0,0.2,1)",
-          overflow: "hidden",
         }}
       >
-        {/* Sidebar top */}
-        <div style={cs.sidebarTop}>
+        {/* Brand */}
+        <div className="flex items-center justify-between px-3 py-3.5 border-b border-gray-200 flex-shrink-0">
           {!sidebarCollapsed && (
-            <div style={cs.sidebarBrand}>
-              <Code size={16} style={{ color: "var(--primary)" }} />
-              <span style={{ fontSize: 14, fontWeight: 700 }}>CodePilot</span>
+            <div
+              className="flex items-center gap-2 cursor-pointer select-none min-w-0"
+              onClick={() => router.push("/")}
+            >
+              <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-black flex-shrink-0">
+                <Code className="w-4 h-4 text-white" />
+              </span>
+              <span className="text-sm font-semibold tracking-tight truncate">CodePilot</span>
             </div>
           )}
           <button
-            className="ghost"
-            style={{ padding: 8, flexShrink: 0 }}
+            className="ghost flex-shrink-0"
             onClick={() => setSidebarCollapsed(p => !p)}
             title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <ChevronRight
-              size={16}
-              style={{ transform: sidebarCollapsed ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.3s" }}
+              className="w-4 h-4 transition-transform duration-300"
+              style={{ transform: sidebarCollapsed ? "rotate(0deg)" : "rotate(180deg)" }}
             />
           </button>
         </div>
 
-        {/* Back and new thread */}
-        <div style={cs.sidebarActions}>
+        {/* Actions */}
+        <div className="px-2.5 py-3 flex flex-col gap-2 flex-shrink-0">
           <button
-            className="secondary"
-            style={cs.backBtn}
+            className="secondary !w-full !px-3 !py-2 !text-xs"
             onClick={() => router.push("/")}
             title="Back to dashboard"
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft className="w-3.5 h-3.5" />
             {!sidebarCollapsed && "Back"}
           </button>
           <button
-            style={cs.newThreadBtn}
+            className="!w-full !px-3 !py-2 !text-xs"
             onClick={startNewThread}
             title="New conversation"
           >
-            <Plus size={14} />
+            <Plus className="w-3.5 h-3.5" />
             {!sidebarCollapsed && "New Thread"}
           </button>
         </div>
 
-        {/* Thread list */}
+        {/* Threads */}
         {!sidebarCollapsed && (
-          <div style={cs.threadList}>
-            <span style={cs.sidebarSectionLabel}>Conversations</span>
-            {threads.length === 0 ? (
-              <p style={cs.emptyThreads}>No conversations yet.</p>
-            ) : (
-              threads.map(t => (
-                <div
-                  key={t.thread_id}
-                  style={{
-                    ...cs.threadItem,
-                    background: activeThreadId === t.thread_id
-                      ? "rgba(147,51,234,0.15)"
-                      : "transparent",
-                    borderColor: activeThreadId === t.thread_id
-                      ? "var(--primary)"
-                      : "transparent",
-                  }}
-                  onClick={() => setActiveThreadId(t.thread_id)}
-                  className={activeThreadId === t.thread_id ? "" : ""}
-                >
-                  <div style={{ flex: 1, overflow: "hidden" }}>
-                    <p style={cs.threadTitle}>{t.title || "Untitled Thread"}</p>
-                    <span style={cs.threadMeta}>{t.message_count} msgs</span>
-                  </div>
-                  <button
-                    className="ghost"
-                    style={{ padding: 4, flexShrink: 0 }}
-                    onClick={e => handleDeleteThread(t.thread_id, e)}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))
+          <div className="flex-1 min-h-0 flex flex-col px-2.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-400 px-1 pt-2 pb-2">
+              Conversations
+            </span>
+
+            {threads.length > 3 && (
+              <div className="relative mb-2">
+                <Search className="w-3 h-3 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Filter threads…"
+                  value={threadSearch}
+                  onChange={e => setThreadSearch(e.target.value)}
+                  className="!pl-8 !py-1.5 !text-xs !rounded-lg"
+                />
+              </div>
             )}
+
+            <div className="flex-1 overflow-y-auto flex flex-col gap-1 pb-2">
+              {visibleThreads.length === 0 ? (
+                <p className="text-xs text-gray-400 px-1 py-2">
+                  {threads.length === 0 ? "No conversations yet." : "No threads match."}
+                </p>
+              ) : (
+                visibleThreads.map(t => (
+                  <div
+                    key={t.thread_id}
+                    onClick={() => setActiveThreadId(t.thread_id)}
+                    className={`group flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer transition-colors flex-shrink-0 ${
+                      activeThreadId === t.thread_id
+                        ? "bg-white border-gray-300 shadow-sm"
+                        : "bg-transparent border-transparent hover:bg-white/70"
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{t.title || "Untitled Thread"}</p>
+                      <span className="text-[10px] text-gray-400">{t.message_count} msgs</span>
+                    </div>
+                    <button
+                      className="ghost opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      onClick={e => handleDeleteThread(t.thread_id, e)}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
 
-        {/* Theme switcher at bottom */}
+        {/* Bottom */}
         {!sidebarCollapsed && (
-          <div style={cs.sidebarBottom}>
-            <span style={cs.sidebarSectionLabel}>Theme</span>
-            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <div className="px-3 py-3 border-t border-gray-200 flex-shrink-0">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-400">
+              Theme
+            </span>
+            <div className="theme-switcher mt-2 justify-center">
               {THEMES.map(t => (
                 <div
                   key={t.id}
@@ -632,13 +658,12 @@ function ChatWorkspace() {
                 />
               ))}
             </div>
+
             {repoInfo && (
-              <div style={{ marginTop: 16, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid var(--border-glass)" }}>
-                <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Active Repo</p>
-                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {repoInfo.name}
-                </p>
-                <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+              <div className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Active Repo</p>
+                <p className="text-xs font-semibold truncate">{repoInfo.name}</p>
+                <p className="text-[10px] text-gray-500 mt-1">
                   {repoInfo.file_count} files · {repoInfo.chunk_count} chunks
                 </p>
               </div>
@@ -647,59 +672,60 @@ function ChatWorkspace() {
         )}
       </aside>
 
-      {/* ── Main workspace ────────────────────────────────────────────── */}
-      <div style={cs.main}>
+      {/* ══ MAIN ════════════════════════════════════════════════════════ */}
+      <div className="flex-1 flex overflow-hidden min-w-0">
 
         {/* ── Left panel: Files / Patch / Plan ───────────────────────── */}
-        <section style={cs.leftPanel}>
+        <section className="w-[320px] lg:w-[380px] flex-shrink-0 hidden md:flex flex-col border-r border-gray-200 bg-white overflow-hidden">
 
           {/* Tab bar */}
-          <div style={cs.tabBar}>
+          <div className="flex border-b border-gray-200 flex-shrink-0 overflow-x-auto no-scrollbar px-2">
             {[
-              { id: "files",  label: "Codebase",    icon: <FileText size={13} />,      activeColor: "var(--secondary)" },
-              { id: "patch",  label: "Code Patch",  icon: <GitPullRequest size={13} />, activeColor: "var(--primary)", disabled: !currentPatch },
-              { id: "plan",   label: "Plan",         icon: <Terminal size={13} />,       activeColor: "var(--accent)",   disabled: !currentPlan },
+              { id: "files",  label: "Codebase",   icon: <FileText className="w-3.5 h-3.5" /> },
+              { id: "patch",  label: "Code Patch", icon: <GitPullRequest className="w-3.5 h-3.5" />, disabled: !currentPatch },
+              { id: "plan",   label: "Plan",       icon: <Terminal className="w-3.5 h-3.5" />,       disabled: !currentPlan },
             ].map(tab => (
               <button
                 key={tab.id}
-                style={{
-                  ...cs.tabBtn,
-                  borderBottomColor: activeTab === tab.id ? tab.activeColor : "transparent",
-                  color: activeTab === tab.id ? "var(--text-primary)" : "var(--text-muted)",
-                  opacity: tab.disabled ? 0.35 : 1,
-                }}
                 disabled={!!tab.disabled}
                 onClick={() => setActiveTab(tab.id as any)}
+                className={`!bg-transparent !rounded-none !shadow-none !px-3.5 !py-3.5 !text-xs !font-medium border-b-2 hover:!bg-transparent ${
+                  activeTab === tab.id
+                    ? "!text-black border-black"
+                    : "!text-gray-500 hover:!text-black border-transparent"
+                }`}
               >
                 {tab.icon}
                 {tab.label}
                 {tab.id === "patch" && currentPatch && (
-                  <span style={cs.tabBadge}>New</span>
+                  <span className="ml-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-black text-white">
+                    New
+                  </span>
                 )}
               </button>
             ))}
           </div>
 
-          {/* Tab content — scrollable */}
-          <div style={cs.tabContent}>
+          {/* Tab content */}
+          <div className="flex-1 overflow-y-auto min-h-0 p-5">
 
             {/* ── FILES TAB ─────────────────────────────────────── */}
             {activeTab === "files" && repoInfo && (
               selectedFilePath ? (
-                <div style={cs.codeViewer}>
-                  <div style={cs.codeViewerHeader}>
+                <div className="flex flex-col gap-3 h-full">
+                  <div className="flex items-center gap-2.5 pb-3 border-b border-gray-200">
                     <button
-                      className="secondary"
-                      style={{ padding: "6px 12px", fontSize: 12 }}
+                      className="secondary !px-3 !py-1.5 !text-xs"
                       onClick={() => { setSelectedFilePath(null); setSelectedFileContent(null); }}
                     >
-                      ← Files
+                      <ArrowLeft className="w-3 h-3" /> Files
                     </button>
-                    <span style={cs.codeViewerPath} title={selectedFilePath}>{selectedFilePath}</span>
+                    <span className="flex-1 text-xs font-medium text-gray-600 font-mono truncate" title={selectedFilePath}>
+                      {selectedFilePath}
+                    </span>
                     {selectedFileContent && (
                       <button
-                        className="secondary"
-                        style={{ padding: "6px 10px", fontSize: 12 }}
+                        className="secondary !px-2.5 !py-1.5"
                         onClick={() => {
                           navigator.clipboard.writeText(selectedFileContent);
                           setCopiedCode(true);
@@ -707,29 +733,34 @@ function ChatWorkspace() {
                         }}
                         title="Copy file content"
                       >
-                        {copiedCode ? <Check size={13} /> : <Copy size={13} />}
+                        {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
                     )}
                   </div>
                   {fileContentLoading ? (
-                    <div style={cs.centered}>
-                      <Loader2 size={28} style={{ animation: "spin 1s linear infinite", color: "var(--primary)" }} />
-                      <span style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 10 }}>Loading file…</span>
+                    <div className="flex flex-col items-center justify-center h-full gap-2.5">
+                      <Loader2 className="w-7 h-7 spin text-gray-900" />
+                      <span className="text-xs text-gray-500">Loading file…</span>
                     </div>
                   ) : (
-                    <pre style={cs.codePre}>{selectedFileContent || "// Empty file"}</pre>
+                    <pre className="flex-1 rounded-xl border border-gray-800 bg-[#0b0b0f] text-gray-200 p-4 font-mono text-xs leading-relaxed overflow-auto whitespace-pre max-h-[calc(100vh-200px)]">
+                      {selectedFileContent || "// Empty file"}
+                    </pre>
                   )}
                 </div>
               ) : (
-                <div style={cs.fileDetails}>
-                  {/* Repo info */}
-                  <h3 style={cs.panelTitle}>{repoInfo.name}</h3>
-                  <div style={cs.metricsRow}>
+                <div className="flex flex-col gap-5 h-full">
+                  <div>
+                    <h3 className="text-lg font-semibold tracking-tight">{repoInfo.name}</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Indexed workspace</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
                     {[
-                      { label: "Files Indexed",  value: repoInfo.file_count.toLocaleString() },
-                      { label: "Code Chunks",    value: repoInfo.chunk_count.toLocaleString() },
+                      { label: "Files Indexed", value: repoInfo.file_count.toLocaleString() },
+                      { label: "Code Chunks",   value: repoInfo.chunk_count.toLocaleString() },
                     ].map(m => (
-                      <div key={m.label} className="stat-chip" style={{ flex: 1 }}>
+                      <div key={m.label} className="stat-chip">
                         <span className="stat-value">{m.value}</span>
                         <span className="stat-label">{m.label}</span>
                       </div>
@@ -737,43 +768,54 @@ function ChatWorkspace() {
                   </div>
 
                   {/* Languages */}
-                  <div style={{ marginBottom: 16 }}>
-                    <p style={cs.subLabel}>Languages</p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400 mb-2">
+                      Languages
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
                       {repoInfo.languages.map(l => (
-                        <span key={l} style={cs.langBadge}>{l}</span>
+                        <span
+                          key={l}
+                          className="text-[11px] px-2.5 py-0.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600"
+                        >
+                          {l}
+                        </span>
                       ))}
                     </div>
                   </div>
 
                   {/* File explorer */}
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                      <p style={cs.subLabel}>File Explorer</p>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{filteredFiles.length} files</span>
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <div className="flex items-center justify-between mb-2.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">
+                        File Explorer
+                      </p>
+                      <span className="text-[11px] text-gray-400">{filteredFiles.length} files</span>
                     </div>
-                    <div style={cs.fileSearchWrap}>
-                      <Search size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+
+                    <div className="relative mb-2">
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                       <input
                         type="text"
                         placeholder="Search files…"
                         value={fileSearch}
                         onChange={e => setFileSearch(e.target.value)}
-                        style={{ ...cs.fileSearchInput, paddingLeft: 8, flex: 1 }}
+                        className="!pl-9 !py-2 !text-xs !rounded-lg"
                       />
                     </div>
-                    <div style={cs.fileList}>
+
+                    <div className="flex-1 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 min-h-[120px]">
                       {filteredFiles.length === 0 ? (
-                        <p style={cs.emptyFiles}>No files match your search.</p>
+                        <p className="p-4 text-xs text-gray-400 text-center">No files match your search.</p>
                       ) : (
                         filteredFiles.map(f => (
                           <div
                             key={f}
-                            style={cs.fileItem}
                             onClick={() => viewFileContent(f)}
+                            className="file-item flex items-center gap-2 px-3 py-2 border-b border-gray-100 last:border-b-0 text-xs text-gray-600 cursor-pointer transition-colors"
                           >
-                            <FileText size={12} style={{ color: "var(--secondary)", flexShrink: 0 }} />
-                            <span style={cs.fileItemText} title={f}>{f}</span>
+                            <FileText className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                            <span className="truncate" title={f}>{f}</span>
                           </div>
                         ))
                       )}
@@ -786,24 +828,26 @@ function ChatWorkspace() {
             {/* ── PATCH TAB ──────────────────────────────────────── */}
             {activeTab === "patch" && currentPatch && (
               applyingPatch ? (
-                <div style={cs.centered}>
-                  <Loader2 size={36} style={{ animation: "spin 1s linear infinite", color: "var(--primary)" }} />
-                  <p style={{ fontWeight: 600, marginTop: 16 }}>{indexingMessage}</p>
-                  <div style={{ width: "80%", maxWidth: 300, height: 6, background: "rgba(255,255,255,0.07)", borderRadius: 10, overflow: "hidden", marginTop: 12 }}>
-                    <div style={{ width: `${indexingProgress}%`, height: "100%", background: "var(--grad-hero)", transition: "width 0.3s" }} />
+                <div className="flex flex-col items-center justify-center h-full min-h-[220px] gap-3">
+                  <Loader2 className="w-8 h-8 spin text-gray-900" />
+                  <p className="text-sm font-semibold text-center">{indexingMessage}</p>
+                  <div className="w-4/5 max-w-[300px] h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-black rounded-full"
+                      style={{ width: `${indexingProgress}%`, transition: "width 0.3s" }}
+                    />
                   </div>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>{Math.round(indexingProgress)}% complete</span>
+                  <span className="text-xs text-gray-500">{Math.round(indexingProgress)}% complete</span>
                 </div>
               ) : (
-                <div style={cs.patchView}>
-                  <div style={cs.patchToolbar}>
-                    <span style={cs.patchBadge}>
-                      <GitPullRequest size={11} /> Unified Diff
+                <div className="flex flex-col h-full gap-3">
+                  <div className="flex items-center justify-between flex-shrink-0 gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-700">
+                      <GitPullRequest className="w-3 h-3" /> Unified Diff
                     </span>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div className="flex gap-2">
                       <button
-                        className="secondary"
-                        style={{ padding: "6px 12px", fontSize: 12 }}
+                        className="secondary !px-3 !py-1.5 !text-xs"
                         onClick={() => {
                           navigator.clipboard.writeText(currentPatch);
                           setCopiedPatch(true);
@@ -811,24 +855,29 @@ function ChatWorkspace() {
                           toast(setToasts, "Patch copied to clipboard.", "info");
                         }}
                       >
-                        {copiedPatch ? <Check size={12} /> : <Copy size={12} />}
-                        Copy Diff
+                        {copiedPatch ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        Copy
                       </button>
                       <a
                         href={api.getDownloadUrl(repoId!)}
                         target="_blank"
                         rel="noreferrer"
-                        style={cs.downloadBtn}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border border-gray-200 bg-white text-gray-600 hover:text-black hover:border-gray-300 transition-colors whitespace-nowrap no-underline"
                       >
-                        <Download size={12} /> Download ZIP
+                        <Download className="w-3 h-3" /> ZIP
                       </a>
                     </div>
                   </div>
-                  <div style={cs.diffContainer}>
+
+                  <div className="flex-1 overflow-auto rounded-xl border border-gray-200 bg-white min-h-0 py-2">
                     {renderPatchDiff(currentPatch)}
                   </div>
-                  <button style={cs.applyBtn} onClick={handleApplyPatch}>
-                    <CheckCircle size={15} /> Apply Patch to Codebase
+
+                  <button
+                    className="apply-btn !w-full !py-3 flex-shrink-0"
+                    onClick={handleApplyPatch}
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Apply Patch to Codebase
                   </button>
                 </div>
               )
@@ -836,15 +885,14 @@ function ChatWorkspace() {
 
             {/* ── PLAN TAB ───────────────────────────────────────── */}
             {activeTab === "plan" && currentPlan && (
-              <div style={cs.planView}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                  <h3 style={cs.panelTitle}>Solution Plan</h3>
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold tracking-tight">Solution Plan</h3>
                   <button
-                    className="secondary"
-                    style={{ padding: "6px 12px", fontSize: 12 }}
+                    className="secondary !px-3 !py-1.5 !text-xs"
                     onClick={() => { navigator.clipboard.writeText(currentPlan); toast(setToasts, "Plan copied.", "info"); }}
                   >
-                    <Copy size={12} /> Copy
+                    <Copy className="w-3 h-3" /> Copy
                   </button>
                 </div>
                 <div className="message-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(currentPlan) }} />
@@ -855,30 +903,31 @@ function ChatWorkspace() {
         </section>
 
         {/* ── Chat panel ─────────────────────────────────────────────── */}
-        <section style={cs.chatPanel}>
+        <section className="flex-1 flex flex-col overflow-hidden min-w-0 bg-white">
 
           {/* Chat header */}
-          <div style={cs.chatHeader}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <h3 style={cs.chatTitle}>{repoInfo?.name || "Active Workspace"}</h3>
-              <span style={cs.chatSubtitle}>AI Copilot Session</span>
+          <div className="flex items-center justify-between gap-4 flex-wrap px-5 py-3 border-b border-gray-200 flex-shrink-0 bg-white/85 backdrop-blur-xl">
+            <div className="flex flex-col min-w-0">
+              <h3 className="text-sm font-semibold tracking-tight truncate">
+                {repoInfo?.name || "Active Workspace"}
+              </h3>
+              <span className="text-[11px] text-gray-400">AI Copilot Session</span>
             </div>
 
-            {/* Mode selector — scrollable pill row */}
-            <div style={cs.modeWrap}>
-              <span style={cs.modeLabel}>Mode:</span>
-              <div style={cs.modePills}>
+            {/* Mode selector */}
+            <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+              <span className="text-[11px] font-medium text-gray-400 flex-shrink-0 hidden sm:inline">Mode</span>
+              <div className="flex gap-1.5 overflow-x-auto mode-pills-scroll py-0.5">
                 {MODES.map(m => (
                   <button
                     key={m.value}
-                    style={{
-                      ...cs.modePill,
-                      background: mode === m.value ? "var(--primary-glow)" : "rgba(255,255,255,0.04)",
-                      borderColor: mode === m.value ? "var(--primary)" : "var(--border-glass)",
-                      color: mode === m.value ? "var(--primary-light)" : "var(--text-muted)",
-                    }}
                     onClick={() => setMode(m.value)}
                     title={m.desc}
+                    className={`mode-pill !px-3 !py-1.5 !text-[11px] !font-medium !shadow-none flex-shrink-0 border ${
+                      mode === m.value
+                        ? "!bg-black !text-white border-black"
+                        : "!bg-white !text-gray-600 border-gray-200 hover:!text-black"
+                    }`}
                   >
                     {m.icon}
                     {m.label}
@@ -888,20 +937,27 @@ function ChatWorkspace() {
             </div>
           </div>
 
-          {/* Message list — SCROLLABLE */}
-          <div style={cs.messageList}>
+          {/* Message list */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 px-5 py-6 flex flex-col gap-3">
             {messages.length === 0 ? (
-              <div style={cs.welcome}>
-                <Sparkles size={36} color="var(--primary)" style={{ opacity: 0.8 }} />
-                <h4 style={{ fontSize: 18, fontWeight: 700, marginTop: 12 }}>
-                  How can I help with {repoInfo?.name || "your codebase"}?
+              <div className="flex flex-col items-center justify-center h-full text-center px-6 py-10 gap-3">
+                <span className="w-14 h-14 rounded-2xl bg-black flex items-center justify-center mb-1 animate-floaty">
+                  <Sparkles className="w-6 h-6 text-white" />
+                </span>
+                <h4 className="text-2xl font-normal tracking-tight">
+                  How can I help with{" "}
+                  <span className="bg-gradient-to-r from-black via-gray-500 to-gray-400 bg-clip-text text-transparent">
+                    {repoInfo?.name || "your codebase"}
+                  </span>
+                  ?
                 </h4>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 380, lineHeight: 1.6 }}>
+                <p className="text-sm text-gray-500 max-w-md leading-relaxed">
                   Ask questions, find bugs, generate patches, or explore the architecture.
-                  <br /><kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for new line.
+                  <br />
+                  <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for a new line.
                 </p>
 
-                <div style={cs.suggestions}>
+                <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
                   {[
                     { label: "🏗️ Explain project structure", q: "Explain the project structure and main entry point." },
                     { label: "🐛 Find potential bugs", q: "Are there any obvious bugs or safety issues in this codebase?" },
@@ -912,9 +968,9 @@ function ChatWorkspace() {
                   ].map(s => (
                     <button
                       key={s.label}
-                      style={cs.suggestionBtn}
                       onClick={() => handleSend(s.q)}
                       disabled={loading}
+                      className="suggestion-btn !bg-white !text-gray-600 !border !border-gray-200 !px-3.5 !py-2 !text-xs !font-medium !shadow-none"
                     >
                       {s.label}
                     </button>
@@ -922,79 +978,81 @@ function ChatWorkspace() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {messages.map((m, i) => (
+              <div className="flex flex-col gap-5 max-w-3xl w-full mx-auto">
+                {messages.map(m => (
                   <div
                     key={m.message_id}
-                    style={{
-                      ...cs.msgRow,
-                      justifyContent: m.role === "user" ? "flex-end" : "flex-start",
-                      animation: `${m.role === "user" ? "slideInRight" : "slideInLeft"} 0.3s ease`,
-                    }}
+                    className={`flex gap-2.5 items-start ${
+                      m.role === "user" ? "justify-end slide-in-right" : "justify-start slide-in-left"
+                    }`}
                   >
-                    {/* Avatar */}
                     {m.role === "assistant" && (
-                      <div style={cs.avatarBot}>
-                        <Sparkles size={13} color="var(--primary-light)" />
-                      </div>
+                      <span className="w-8 h-8 rounded-xl bg-black flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Sparkles className="w-3.5 h-3.5 text-white" />
+                      </span>
                     )}
 
-                    <div style={{
-                      ...cs.bubble,
-                      background: m.role === "user"
-                        ? "rgba(147,51,234,0.15)"
-                        : "rgba(255,255,255,0.03)",
-                      borderColor: m.role === "user"
-                        ? "rgba(147,51,234,0.35)"
-                        : "rgba(255,255,255,0.07)",
-                      maxWidth: m.role === "user" ? "72%" : "82%",
-                    }}>
+                    <div
+                      className={`flex flex-col gap-2.5 px-4 py-3.5 rounded-2xl border ${
+                        m.role === "user"
+                          ? "bg-gray-50 border-gray-200 max-w-[80%]"
+                          : "bg-white border-gray-200 shadow-sm max-w-[86%]"
+                      }`}
+                    >
                       {/* Bubble header */}
-                      <div style={cs.bubbleHeader}>
-                        <span style={cs.bubbleSender}>
+                      <div className="flex items-center gap-2 text-[11px] pb-2 border-b border-gray-100">
+                        <span className="font-semibold text-gray-700">
                           {m.role === "user" ? "You" : "CodePilot Agent"}
                         </span>
                         {m.mode && (
-                          <span style={cs.bubbleMode}>{m.mode}</span>
+                          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                            {m.mode}
+                          </span>
                         )}
-                        <span style={cs.bubbleTime}>
+                        <span className="ml-auto text-gray-400">
                           {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
 
-                      {/* Content — SCROLLABLE if very long */}
-                      <div style={cs.bubbleBody}>
+                      {/* Content */}
+                      <div className="max-h-[480px] overflow-y-auto overflow-x-hidden">
                         <MessageContent content={m.content} mode={m.mode} />
                       </div>
 
                       {/* Plan badge */}
                       {m.plan && (
                         <button
-                          style={cs.planBadge}
                           onClick={() => { setCurrentPlan(m.plan || null); setActiveTab("plan"); }}
+                          className="plan-badge-btn self-start !bg-amber-50 !text-amber-700 !border !border-amber-200 !px-3 !py-1.5 !text-xs !font-medium !shadow-none"
                         >
-                          <Terminal size={12} /> View Solution Plan
+                          <Terminal className="w-3 h-3" /> View Solution Plan
                         </button>
                       )}
 
                       {/* Patch badge */}
                       {m.patch && (
                         <button
-                          style={cs.patchBadgeBtn}
                           onClick={() => { setCurrentPatch(m.patch || null); setActiveTab("patch"); }}
+                          className="patch-badge-btn self-start !bg-gray-900 !text-white !px-3 !py-1.5 !text-xs !font-medium"
                         >
-                          <GitPullRequest size={12} /> View Code Patch
+                          <GitPullRequest className="w-3 h-3" /> View Code Patch
                         </button>
                       )}
 
                       {/* Citations */}
                       {m.citations?.length > 0 && (
-                        <div style={cs.citations}>
-                          <p style={cs.citationsLabel}>Sources:</p>
-                          <div style={cs.citationsList}>
+                        <div className="border-t border-gray-100 pt-2.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                            Sources
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
                             {m.citations.map((c, idx) => (
-                              <span key={idx} style={cs.citationChip} title={c.file_path}>
-                                <FileText size={10} />
+                              <span
+                                key={idx}
+                                title={c.file_path}
+                                className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600"
+                              >
+                                <FileText className="w-2.5 h-2.5" />
                                 {c.file_path.split("/").pop()}
                               </span>
                             ))}
@@ -1004,7 +1062,9 @@ function ChatWorkspace() {
                     </div>
 
                     {m.role === "user" && (
-                      <div style={cs.avatarUser}>You</div>
+                      <span className="w-8 h-8 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5 text-[10px] font-bold text-gray-600">
+                        You
+                      </span>
                     )}
                   </div>
                 ))}
@@ -1013,14 +1073,14 @@ function ChatWorkspace() {
 
             {/* Typing indicator */}
             {loading && (
-              <div style={{ ...cs.msgRow, justifyContent: "flex-start" }}>
-                <div style={cs.avatarBot}>
-                  <Sparkles size={13} color="var(--primary-light)" />
-                </div>
-                <div style={{ ...cs.bubble, background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.06)", padding: "14px 18px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="flex gap-2.5 items-start max-w-3xl w-full mx-auto">
+                <span className="w-8 h-8 rounded-xl bg-black flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                </span>
+                <div className="px-4 py-3.5 rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div className="flex items-center gap-2.5">
                     <TypingIndicator />
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>CodePilot is thinking…</span>
+                    <span className="text-xs text-gray-500">CodePilot is thinking…</span>
                   </div>
                 </div>
               </div>
@@ -1030,50 +1090,56 @@ function ChatWorkspace() {
           </div>
 
           {/* Input area */}
-          <div style={cs.inputArea}>
-            <div style={cs.inputWrap}>
-              <textarea
-                ref={chatInputRef}
-                rows={1}
-                placeholder="Ask anything… (Enter to send, Shift+Enter for new line)"
-                value={query}
-                onChange={handleQueryChange}
-                onKeyDown={handleKeyDown}
-                disabled={loading}
-                style={cs.chatTextarea}
-              />
-              <button
-                onClick={() => handleSend()}
-                disabled={loading || !query.trim()}
-                style={cs.sendBtn}
-                title="Send (Enter)"
-              >
-                {loading
-                  ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-                  : <Send size={16} />
-                }
-              </button>
-            </div>
-            <div style={cs.inputMeta}>
-              <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
-                Mode: <strong style={{ color: "var(--primary-light)" }}>{MODES.find(m => m.value === mode)?.label}</strong>
-              </span>
-              <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
-                {query.length > 0 ? `${query.length} chars` : <><kbd>Enter</kbd> send · <kbd>↑</kbd> history</>}
-              </span>
+          <div className="border-t border-gray-200 px-5 pt-3.5 pb-4 flex-shrink-0 bg-white">
+            <div className="max-w-3xl mx-auto">
+              <div className="input-wrap flex gap-2.5 items-end rounded-2xl border border-gray-200 bg-white pl-4 pr-2 py-2 transition-all">
+                <textarea
+                  ref={chatInputRef}
+                  rows={1}
+                  placeholder="Ask anything… (Enter to send, Shift+Enter for new line)"
+                  value={query}
+                  onChange={handleQueryChange}
+                  onKeyDown={handleKeyDown}
+                  disabled={loading}
+                  className="chat-textarea flex-1 !bg-transparent !border-0 !p-0 !py-1.5 !rounded-none !shadow-none resize-none text-sm leading-relaxed max-h-40 overflow-y-auto focus:!ring-0 focus:!shadow-none"
+                />
+                <button
+                  onClick={() => handleSend()}
+                  disabled={loading || !query.trim()}
+                  title="Send (Enter)"
+                  className="!w-9 !h-9 !p-0 !rounded-xl flex-shrink-0"
+                >
+                  {loading
+                    ? <Loader2 className="w-4 h-4 spin" />
+                    : <Send className="w-4 h-4" />}
+                </button>
+              </div>
+
+              <div className="flex justify-between mt-2 px-1">
+                <span className="text-[11px] text-gray-400">
+                  Mode: <strong className="text-gray-700 font-medium">
+                    {MODES.find(m => m.value === mode)?.label}
+                  </strong>
+                </span>
+                <span className="text-[11px] text-gray-400">
+                  {query.length > 0
+                    ? `${query.length} chars`
+                    : <><kbd>Enter</kbd> send · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> force</>}
+                </span>
+              </div>
             </div>
           </div>
 
         </section>
       </div>
 
-      {/* ── Toast notifications ─────────────────────────────────────── */}
+      {/* ══ TOASTS ══════════════════════════════════════════════════════ */}
       <div className="toast-container">
         {toasts.map(t => (
           <div key={t.id} className={`toast ${t.type}`}>
-            {t.type === "success" && <CheckCircle size={14} color="var(--success)" />}
-            {t.type === "error" && <AlertTriangle size={14} color="var(--error)" />}
-            {t.type === "info" && <Sparkles size={14} color="var(--primary)" />}
+            {t.type === "success" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+            {t.type === "error" && <AlertTriangle className="w-3.5 h-3.5 text-red-600" />}
+            {t.type === "info" && <Sparkles className="w-3.5 h-3.5 text-gray-700" />}
             {t.msg}
           </div>
         ))}
@@ -1086,434 +1152,12 @@ function ChatWorkspace() {
 export default function ChatPage() {
   return (
     <Suspense fallback={
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 16 }}>
-        <Loader2 size={36} style={{ animation: "spin 1s linear infinite", color: "var(--primary)" }} />
-        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Loading workspace…</p>
+      <div className="flex flex-col items-center justify-center h-screen gap-4">
+        <Loader2 className="w-8 h-8 spin text-gray-900" />
+        <p className="text-sm text-gray-500">Loading workspace…</p>
       </div>
     }>
       <ChatWorkspace />
     </Suspense>
   );
 }
-
-// ── Styles ──────────────────────────────────────────────────────────────────
-const cs: Record<string, React.CSSProperties> = {
-
-  workspace: {
-    display: "flex",
-    height: "100vh",
-    width: "100vw",
-    overflow: "hidden",
-    background: "var(--bg-base)",
-  },
-
-  // ── Sidebar ──────────────────────────────────────────────────────────────
-  sidebar: {
-    background: "rgba(6,5,14,0.95)",
-    borderRight: "1px solid var(--border-glass)",
-    display: "flex",
-    flexDirection: "column",
-    flexShrink: 0,
-    height: "100vh",
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
-  },
-  sidebarTop: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "16px 12px 12px",
-    borderBottom: "1px solid var(--border-glass)",
-    flexShrink: 0,
-  },
-  sidebarBrand: { display: "flex", alignItems: "center", gap: 8 },
-  sidebarActions: {
-    padding: "12px 10px",
-    display: "flex", flexDirection: "column", gap: 8, flexShrink: 0,
-  },
-  backBtn: {
-    width: "100%", justifyContent: "center", padding: "8px 12px", fontSize: 12, gap: 6,
-  },
-  newThreadBtn: {
-    width: "100%", justifyContent: "center", padding: "8px 12px", fontSize: 12, gap: 6,
-  },
-  threadList: {
-    flex: 1, overflowY: "auto", padding: "4px 10px",
-    display: "flex", flexDirection: "column", gap: 4,
-    minHeight: 0,
-  },
-  sidebarSectionLabel: {
-    fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-    letterSpacing: "0.1em", color: "var(--text-muted)",
-    padding: "8px 4px 4px",
-    display: "block", flexShrink: 0,
-  },
-  emptyThreads: { fontSize: 12, color: "var(--text-muted)", padding: "8px 4px" },
-  threadItem: {
-    display: "flex", alignItems: "center", gap: 8,
-    padding: "9px 10px", borderRadius: 8,
-    border: "1px solid transparent", cursor: "pointer",
-    transition: "all 0.2s",
-    flexShrink: 0,
-  },
-  threadTitle: {
-    fontSize: 12, fontWeight: 500, color: "var(--text-primary)",
-    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-  },
-  threadMeta: { fontSize: 10, color: "var(--text-muted)" },
-  sidebarBottom: {
-    padding: "12px 14px 16px",
-    borderTop: "1px solid var(--border-glass)",
-    flexShrink: 0,
-  },
-
-  // ── Main ─────────────────────────────────────────────────────────────────
-  main: {
-    flex: 1, display: "flex", overflow: "hidden", minWidth: 0,
-  },
-
-  // ── Left panel ───────────────────────────────────────────────────────────
-  leftPanel: {
-    width: 380,
-    flexShrink: 0,
-    display: "flex",
-    flexDirection: "column",
-    borderRight: "1px solid var(--border-glass)",
-    background: "rgba(8,7,16,0.9)",
-    overflow: "hidden",
-  },
-  tabBar: {
-    display: "flex",
-    borderBottom: "1px solid var(--border-glass)",
-    background: "rgba(0,0,0,0.2)",
-    flexShrink: 0,
-    overflowX: "auto",
-  },
-  tabBtn: {
-    flex: "0 0 auto",
-    background: "none",
-    border: "none",
-    borderBottom: "2px solid transparent",
-    borderRadius: 0,
-    boxShadow: "none",
-    padding: "14px 14px 12px",
-    fontSize: 12,
-    fontWeight: 600,
-    display: "flex", alignItems: "center", gap: 6,
-    cursor: "pointer",
-    transition: "color 0.2s, border-color 0.2s",
-    whiteSpace: "nowrap",
-  },
-  tabBadge: {
-    fontSize: 9, fontWeight: 800, letterSpacing: "0.05em",
-    background: "var(--primary)",
-    color: "#fff", padding: "1px 5px", borderRadius: 10,
-    marginLeft: 2,
-  },
-  tabContent: {
-    flex: 1, overflowY: "auto", minHeight: 0,
-    padding: "20px",
-  },
-
-  // Files tab
-  fileDetails: { display: "flex", flexDirection: "column", gap: 16, height: "100%" },
-  panelTitle: { fontSize: 18, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 },
-  metricsRow: { display: "flex", gap: 10, marginBottom: 4 },
-  subLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)" },
-  langBadge: {
-    fontSize: 11, background: "rgba(6,182,212,0.08)",
-    border: "1px solid rgba(6,182,212,0.25)",
-    color: "#22d3ee", padding: "3px 10px", borderRadius: 12,
-  },
-  fileSearchWrap: {
-    display: "flex", alignItems: "center", gap: 8,
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid var(--border-glass)",
-    borderRadius: 8, padding: "8px 12px",
-    marginBottom: 8,
-  },
-  fileSearchInput: {
-    background: "none", border: "none",
-    color: "var(--text-primary)", fontSize: 13, outline: "none",
-    width: "auto",
-  },
-  fileList: {
-    flex: 1, overflowY: "auto",
-    border: "1px solid var(--border-glass)",
-    borderRadius: 8, background: "rgba(0,0,0,0.2)",
-    minHeight: 120,
-  },
-  emptyFiles: { padding: "16px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" },
-  fileItem: {
-    display: "flex", alignItems: "center", gap: 8,
-    padding: "9px 12px",
-    borderBottom: "1px solid rgba(255,255,255,0.03)",
-    fontSize: 12, color: "var(--text-secondary)",
-    cursor: "pointer", transition: "background 0.15s",
-  },
-  fileItemText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-
-  // Code viewer
-  codeViewer: { display: "flex", flexDirection: "column", gap: 12, height: "100%" },
-  codeViewerHeader: {
-    display: "flex", alignItems: "center", gap: 10,
-    paddingBottom: 12, borderBottom: "1px solid var(--border-glass)",
-  },
-  codeViewerPath: {
-    flex: 1, fontSize: 12, fontWeight: 600, color: "var(--text-secondary)",
-    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-    fontFamily: "var(--font-mono)",
-  },
-  codePre: {
-    flex: 1,
-    background: "#0a0818",
-    border: "1px solid var(--border-glass)",
-    borderRadius: 8, padding: "14px",
-    fontFamily: "var(--font-mono)",
-    fontSize: 12, lineHeight: 1.65,
-    overflowX: "auto", overflowY: "auto",
-    whiteSpace: "pre",
-    color: "var(--text-code)",
-    maxHeight: "calc(100vh - 200px)",
-  },
-  centered: {
-    display: "flex", flexDirection: "column", alignItems: "center",
-    justifyContent: "center", height: "100%", minHeight: 200,
-    gap: 8,
-  },
-
-  // Patch view
-  patchView: { display: "flex", flexDirection: "column", height: "100%", gap: 12 },
-  patchToolbar: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    flexShrink: 0,
-  },
-  patchBadge: {
-    fontSize: 11, fontWeight: 700,
-    background: "rgba(147,51,234,0.12)", border: "1px solid var(--border-active)",
-    color: "var(--primary-light)", padding: "4px 10px", borderRadius: 6,
-    display: "inline-flex", alignItems: "center", gap: 5,
-  },
-  downloadBtn: {
-    display: "inline-flex", alignItems: "center", gap: 6,
-    padding: "6px 12px", fontSize: 12, borderRadius: 8, fontWeight: 600,
-    background: "rgba(255,255,255,0.05)", border: "1px solid var(--border-glass)",
-    color: "var(--text-secondary)", textDecoration: "none", transition: "all 0.2s",
-    whiteSpace: "nowrap",
-  },
-  diffContainer: {
-    flex: 1, overflowY: "auto", overflowX: "auto",
-    border: "1px solid var(--border-glass)",
-    borderRadius: 8, background: "#0a0818",
-    minHeight: 0,
-  },
-  diffWrapper: {
-    fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.6,
-  },
-  diffLine: {
-    display: "flex", gap: 12,
-    padding: "1px 10px",
-    whiteSpace: "pre",
-  },
-  diffLineNum: {
-    color: "rgba(255,255,255,0.2)", userSelect: "none", flexShrink: 0,
-    width: 36, textAlign: "right",
-  },
-  applyBtn: {
-    width: "100%", justifyContent: "center",
-    background: "linear-gradient(135deg, var(--success), #059669)",
-    boxShadow: "0 4px 16px rgba(16,185,129,0.3)",
-    flexShrink: 0,
-  },
-
-  // Plan view
-  planView: {
-    display: "flex", flexDirection: "column",
-    background: "rgba(255,255,255,0.01)",
-  },
-
-  // ── Chat panel ───────────────────────────────────────────────────────────
-  chatPanel: {
-    flex: 1, display: "flex", flexDirection: "column",
-    overflow: "hidden", minWidth: 0,
-    background: "rgba(10,8,20,0.85)",
-  },
-
-  // Chat header
-  chatHeader: {
-    padding: "14px 20px",
-    borderBottom: "1px solid var(--border-glass)",
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    flexShrink: 0, gap: 16,
-    background: "rgba(0,0,0,0.15)",
-    flexWrap: "wrap",
-  },
-  chatTitle: { fontSize: 15, fontWeight: 700, color: "var(--text-primary)" },
-  chatSubtitle: { fontSize: 11, color: "var(--text-muted)" },
-  modeWrap: {
-    display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, overflow: "hidden",
-  },
-  modeLabel: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 },
-  modePills: {
-    display: "flex", gap: 6, overflowX: "auto",
-    paddingBottom: 2,
-    scrollbarWidth: "none",
-    // WebkitOverflowScrolling removed; custom scrollbar hidden via scrollbarWidth
-  },
-  modePill: {
-    display: "inline-flex", alignItems: "center", gap: 5,
-    padding: "5px 11px", fontSize: 11, fontWeight: 600,
-    borderRadius: 20, border: "1px solid",
-    background: "none", boxShadow: "none",
-    cursor: "pointer", transition: "all 0.2s",
-    whiteSpace: "nowrap", flexShrink: 0,
-  },
-
-  // Message list — THE KEY SCROLLABLE AREA
-  messageList: {
-    flex: 1,
-    overflowY: "auto",
-    overflowX: "hidden",
-    padding: "20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    minHeight: 0,
-    // Custom scrollbar
-    scrollbarWidth: "thin",
-    scrollbarColor: "var(--scrollbar-thumb) transparent",
-  },
-
-  // Welcome screen
-  welcome: {
-    display: "flex", flexDirection: "column", alignItems: "center",
-    justifyContent: "center", height: "100%", textAlign: "center",
-    padding: "40px 24px", gap: 12,
-    color: "var(--text-primary)",
-  },
-  suggestions: {
-    display: "flex", flexWrap: "wrap", gap: 8,
-    justifyContent: "center", marginTop: 16, maxWidth: 520,
-  },
-  suggestionBtn: {
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid var(--border-glass)",
-    color: "var(--text-secondary)", fontSize: 12, fontWeight: 500,
-    padding: "8px 14px", borderRadius: 20, boxShadow: "none",
-    transition: "all 0.2s",
-  },
-
-  // Messages
-  msgRow: { display: "flex", gap: 10, alignItems: "flex-start" },
-  avatarBot: {
-    width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-    background: "linear-gradient(135deg, var(--primary-glow), var(--secondary-glow))",
-    border: "1px solid var(--border-active)",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    marginTop: 2,
-  },
-  avatarUser: {
-    width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-    background: "rgba(147,51,234,0.2)", border: "1px solid rgba(147,51,234,0.3)",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: 10, fontWeight: 700, color: "var(--primary-light)",
-    marginTop: 2,
-  },
-  bubble: {
-    display: "flex", flexDirection: "column", gap: 10,
-    padding: "14px 16px",
-    borderRadius: 12, border: "1px solid",
-    // Key: allow horizontal scroll for long content like code
-    overflowX: "hidden",
-    wordBreak: "break-word",
-  },
-  bubbleHeader: {
-    display: "flex", alignItems: "center", gap: 8,
-    fontSize: 11, paddingBottom: 6,
-    borderBottom: "1px solid rgba(255,255,255,0.05)",
-  },
-  bubbleSender: { fontWeight: 700, color: "var(--text-secondary)" },
-  bubbleMode: {
-    fontSize: 9, fontWeight: 800, textTransform: "uppercase",
-    background: "rgba(255,255,255,0.08)", padding: "2px 6px",
-    borderRadius: 4, color: "var(--text-muted)",
-  },
-  bubbleTime: { color: "var(--text-muted)", marginLeft: "auto" },
-  bubbleBody: {
-    // Allow scroll for very long messages
-    maxHeight: 480,
-    overflowY: "auto",
-    overflowX: "hidden",
-    scrollbarWidth: "thin",
-    scrollbarColor: "var(--scrollbar-thumb) transparent",
-  },
-  planBadge: {
-    display: "inline-flex", alignItems: "center", gap: 6,
-    fontSize: 12, fontWeight: 600, padding: "7px 12px",
-    background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)",
-    color: "#fbbf24", borderRadius: 8, boxShadow: "none",
-    cursor: "pointer", transition: "all 0.2s",
-    alignSelf: "flex-start",
-  },
-  patchBadgeBtn: {
-    display: "inline-flex", alignItems: "center", gap: 6,
-    fontSize: 12, fontWeight: 600, padding: "7px 12px",
-    background: "rgba(147,51,234,0.1)", border: "1px solid rgba(147,51,234,0.3)",
-    color: "var(--primary-light)", borderRadius: 8, boxShadow: "none",
-    cursor: "pointer", transition: "all 0.2s",
-    alignSelf: "flex-start",
-  },
-  citations: {
-    borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 8,
-  },
-  citationsLabel: { fontSize: 10, color: "var(--text-muted)", marginBottom: 6, fontWeight: 700 },
-  citationsList: { display: "flex", flexWrap: "wrap", gap: 5 },
-  citationChip: {
-    display: "inline-flex", alignItems: "center", gap: 4,
-    fontSize: 11, color: "var(--secondary)",
-    background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)",
-    padding: "3px 8px", borderRadius: 12,
-  },
-
-  // Input area
-  inputArea: {
-    borderTop: "1px solid var(--border-glass)",
-    padding: "14px 20px 18px",
-    background: "rgba(0,0,0,0.15)",
-    flexShrink: 0,
-  },
-  inputWrap: {
-    display: "flex", gap: 10, alignItems: "flex-end",
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid var(--border-glass)",
-    borderRadius: 16, padding: "8px 8px 8px 16px",
-    transition: "border-color 0.2s, box-shadow 0.2s",
-  },
-  chatTextarea: {
-    flex: 1, background: "none", border: "none", outline: "none",
-    color: "var(--text-primary)", fontFamily: "var(--font-sans)",
-    fontSize: 14, lineHeight: 1.5, resize: "none",
-    maxHeight: 160, overflowY: "auto", padding: "4px 0",
-    width: "auto",
-  },
-  sendBtn: {
-    width: 40, height: 40, borderRadius: 10,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    padding: 0, flexShrink: 0,
-  },
-  inputMeta: {
-    display: "flex", justifyContent: "space-between",
-    marginTop: 6, padding: "0 4px",
-  },
-
-  // Copy button for messages
-  copyMsgBtn: {
-    position: "absolute",
-    top: 0, right: 0,
-    background: "rgba(255,255,255,0.07) !important",
-    border: "1px solid var(--border-glass)",
-    borderRadius: 6, padding: "3px 7px",
-    fontSize: 11, color: "var(--text-muted)",
-    cursor: "pointer", boxShadow: "none",
-    opacity: 0,
-    transition: "opacity 0.2s",
-  },
-};
