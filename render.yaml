@@ -1,0 +1,83 @@
+# ============================================================
+# CodePilot RAG — Render Blueprint (backend only)
+#
+# The Next.js frontend stays on Vercel. This deploys the FastAPI
+# backend and gives it a persistent disk for the Chroma index and
+# uploaded ZIP archives.
+#
+# Secrets are declared with `sync: false`, which means Render prompts
+# for them in the dashboard and they are NEVER stored in this file.
+# ============================================================
+
+services:
+  - type: web
+    name: codepilot-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Starter (paid) is required — the free instance type has no disk
+    # support and spins down after ~15 min idle, which loses the Chroma
+    # index and every uploaded archive on each restart.
+    plan: starter
+    region: oregon
+
+    healthCheckPath: /health
+
+    # Persistent storage. Both CHROMA_PERSIST_DIR and UPLOAD_DIR below
+    # point inside this mount so state survives restarts and redeploys.
+    disk:
+      name: codepilot-data
+      mountPath: /app/data
+      sizeGB: 1
+
+    envVars:
+      # ── Secrets — entered in the Render dashboard, not committed ──
+      # Atlas SRV string, e.g.
+      #   mongodb+srv://CodePilotRAG:<password>@cluster0.rtnew0g.mongodb.net/?retryWrites=true&w=majority
+      - key: MONGODB_URL
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+
+      # Comma-separated. Must include the Vercel production URL, e.g.
+      #   https://frontend-theta-olive-55.vercel.app,http://localhost:3000
+      - key: CORS_ORIGINS
+        sync: false
+
+      # Matches Vercel PREVIEW deployments, which get a fresh random hostname
+      # per build and so cannot be enumerated in CORS_ORIGINS above.
+      # Starlette uses re.fullmatch, so this must describe the whole origin.
+      # Scoped to this project + team on purpose — allow_credentials is on.
+      - key: CORS_ORIGIN_REGEX
+        value: https://frontend-[a-z0-9-]+-alieenbotrishabhs-projects\.vercel\.app
+
+      # ── Non-secret configuration ──
+      - key: MONGODB_DB_NAME
+        value: copilot_rag
+
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: models/gemini-2.5-flash
+      - key: EMBEDDING_MODEL
+        value: models/gemini-embedding-2
+
+      # Paths inside the persistent disk mount above.
+      - key: CHROMA_PERSIST_DIR
+        value: /app/data/chroma
+      - key: UPLOAD_DIR
+        value: /app/data/uploads
+
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "100"
+      - key: DEBUG
+        value: "false"
+
+      # CHROMA_HOST / CHROMA_PORT are deliberately unset. The socket probe
+      # in app/services/vectorstore.py then fails fast and the service falls
+      # back to the embedded PersistentClient, which is what we want here —
+      # no separate Chroma server to run.

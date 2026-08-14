@@ -28,12 +28,21 @@ class Settings(BaseSettings):
 
     cors_origins: str | list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
+    # Optional regex for origins that cannot be enumerated ahead of time —
+    # Vercel preview deployments get a fresh random hostname per build.
+    # Empty string disables regex matching entirely.
+    #
+    # Keep this tightly scoped. CORS runs with allow_credentials=True, so a
+    # broad pattern like https://.*\.vercel\.app would let ANY Vercel-hosted
+    # site make credentialed calls to this API.
+    cors_origin_regex: str = ""
+
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
     # ── LLM Provider ────────────────────────────────────────────

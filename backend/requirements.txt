@@ -27,6 +27,10 @@ openai==1.58.1
 # MongoDB
 motor==3.6.0
 pymongo==4.9.1
+# Required for mongodb+srv:// URIs (MongoDB Atlas). pymongo does not pull this
+# in on its own — without it, startup raises ConfigurationError and main.py
+# exits, crash-looping the container.
+dnspython==2.7.0
 beanie==1.27.0
 
 # File Processing

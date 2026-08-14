@@ -55,12 +55,23 @@ app = FastAPI(
 )
 
 # CORS Middleware config
+#
+# An origin is allowed if it is in the explicit list OR matches the regex.
+# The regex covers Vercel preview deployments, whose hostnames are generated
+# per build and so cannot be listed up front. Starlette applies re.fullmatch,
+# so the pattern must describe the entire origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+logger.info(
+    "CORS allow-list: %s | regex: %s",
+    settings.cors_origins,
+    settings.cors_origin_regex or "(disabled)",
 )
 
 # Include API endpoints routers

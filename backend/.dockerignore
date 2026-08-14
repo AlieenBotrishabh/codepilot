@@ -1,0 +1,26 @@
+# Keep the build context small — these are large, local-only, or secret.
+# The Dockerfile only COPYs requirements.txt and app/, but the whole
+# context is still uploaded to the builder without this file.
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+
+# Local state — must never bake into the image. On Render these live on
+# the persistent disk at /app/data instead.
+chroma_data/
+uploads/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
