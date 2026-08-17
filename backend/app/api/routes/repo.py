@@ -9,9 +9,10 @@ from uuid import uuid4
 
 import asyncio
 import zipfile
-from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, Depends, HTTPException, status
 from pydantic import HttpUrl
 
+from app.api.deps import require_api_key
 from app.config import get_settings
 from app.models.db_models import Repository, Job
 from app.models.schemas import RepoUploadResponse, RepoListResponse, RepoInfo, LocalRepoIngestRequest
@@ -24,7 +25,12 @@ settings = get_settings()
 vector_service = get_vectorstore_service()
 
 
-@router.post("/upload", response_model=RepoUploadResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/upload",
+    response_model=RepoUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_api_key)],
+)
 async def upload_repo(
     background_tasks: BackgroundTasks,
     file: UploadFile | None = File(None),
@@ -105,16 +111,52 @@ async def upload_repo(
     )
 
 
-@router.post("/local", response_model=RepoUploadResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/local",
+    response_model=RepoUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_api_key)],
+)
 async def ingest_local_path(
     request: LocalRepoIngestRequest,
     background_tasks: BackgroundTasks,
 ):
     """
     Ingest a repository from a local directory path on the system.
+
+    This reads an arbitrary directory from the SERVER's filesystem. That is the
+    intended behaviour on a developer machine, and a directory-disclosure
+    primitive on a hosted instance — so it is gated by ALLOW_LOCAL_INGEST and
+    can be further confined to a single root via LOCAL_INGEST_ROOT.
     """
-    local_path = Path(request.path)
-    if not local_path.exists() or not local_path.is_dir():
+    if not settings.allow_local_ingest:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Local path ingestion is disabled on this deployment. "
+                "Use a GitHub URL or upload a ZIP archive instead."
+            ),
+        )
+
+    try:
+        local_path = Path(request.path).resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The specified path does not exist or is not a directory."
+        )
+
+    # Confinement check. resolve() above collapses '..' and symlinks first, so
+    # a traversal like /allowed/../../etc cannot escape the configured root.
+    if settings.local_ingest_root:
+        root = Path(settings.local_ingest_root).resolve()
+        if root not in local_path.parents and local_path != root:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Path must be inside the permitted ingest root: {root}",
+            )
+
+    if not local_path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The specified path does not exist or is not a directory."
@@ -195,19 +237,44 @@ async def ingest_local_path(
 
 @router.get("", response_model=RepoListResponse)
 async def list_repos():
-    """List all indexed repositories and their status."""
+    """List all indexed repositories, reconciled against the live vector index.
+
+    Repository metadata lives in MongoDB while the vectors live in Chroma, so
+    the two can drift — most commonly when the backend restarts without
+    persistent storage and the index is wiped while Mongo still says "ready".
+    That produced a ghost repository the UI happily opened, and every question
+    against it fell through to an ungrounded answer.
+
+    Reporting the live chunk count makes the drift visible instead of silent.
+    """
     repos = await Repository.find_all().to_list()
     repo_infos = []
 
     for r in repos:
+        status_value = r.status
+        chunk_count = r.chunk_count
+
+        # Only meaningful for repos that claim to be queryable.
+        if r.status == "ready":
+            try:
+                live_count = await vector_service.collection_count(r.repo_id)
+            except Exception:
+                live_count = 0
+
+            if live_count == 0 and r.chunk_count > 0:
+                status_value = "error"
+                chunk_count = 0
+            elif live_count:
+                chunk_count = live_count
+
         repo_infos.append(RepoInfo(
             repo_id=r.repo_id,
             name=r.name,
             description=r.description,
             file_count=r.file_count,
-            chunk_count=r.chunk_count,
+            chunk_count=chunk_count,
             languages=r.languages,
-            status=r.status,
+            status=status_value,
             created_at=r.created_at,
             indexed_at=r.indexed_at
         ))
@@ -215,7 +282,11 @@ async def list_repos():
     return RepoListResponse(repos=repo_infos, total=len(repo_infos))
 
 
-@router.delete("/{repo_id}", status_code=status.HTTP_200_OK)
+@router.delete(
+    "/{repo_id}",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_api_key)],
+)
 async def delete_repo(repo_id: str):
     """Delete repository metadata, uploaded zip files, and Chroma collection."""
     repo = await Repository.find_one(Repository.repo_id == repo_id)

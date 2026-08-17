@@ -7,7 +7,9 @@ import asyncio
 from collections import defaultdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+
+from app.api.deps import require_api_key, require_api_key_for_chat
 
 from app.models.schemas import ChatRequest, ChatResponse, Citation
 from app.models.db_models import Repository, Thread, Message
@@ -45,7 +47,11 @@ async def _check_rate_limit(ip: str) -> None:
 
 # ── Chat endpoint ─────────────────────────────────────────────────────────────
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(require_api_key_for_chat)],
+)
 async def chat_interaction(request: ChatRequest, http_request: Request):
     """
     Send a message to the autonomous coding copilot.
@@ -180,7 +186,7 @@ async def get_thread_messages(thread_id: str):
     return {"messages": messages}
 
 
-@router.delete("/threads/{thread_id}")
+@router.delete("/threads/{thread_id}", dependencies=[Depends(require_api_key)])
 async def delete_thread(thread_id: str):
     """Delete a conversation thread and its messages."""
     await MemoryService.delete_thread(thread_id)

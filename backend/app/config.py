@@ -71,11 +71,49 @@ class Settings(BaseSettings):
     # ── GitHub ──────────────────────────────────────────────────
     github_token: str = ""
 
+    # ── Security ────────────────────────────────────────────────
+    # When empty, authentication is DISABLED and every endpoint is public
+    # (the original behaviour, so local development is unchanged).
+    # Set this in any deployment reachable from the internet.
+    api_key: str = ""
+
+    # Chat is the public demo surface, so it stays open by default and is
+    # protected only by the per-IP rate limiter. Flip this on to require the
+    # API key for chat too — e.g. if LLM quota is being drained.
+    protect_chat: bool = False
+
+    # /repos/local reads an arbitrary directory from the SERVER's filesystem.
+    # That is fine on a developer machine and is a directory-disclosure
+    # primitive on a hosted instance. Disable it in production.
+    allow_local_ingest: bool = True
+
+    # Optional containment: when set, /repos/local only accepts paths inside
+    # this directory. Ignored when allow_local_ingest is False.
+    local_ingest_root: str = ""
+
     # ── Ingestion ───────────────────────────────────────────────
     chunk_size: int = 1000
     chunk_overlap: int = 200
     max_chunks_per_file: int = 50
     retrieval_k: int = 8  # Number of chunks to retrieve
+
+    # ── Retrieval quality ───────────────────────────────────────
+    # Minimum relevance score (0..1, higher is better) a chunk must reach to
+    # be used as grounding context. Chunks below this are discarded, and if
+    # NOTHING clears the bar the agent refuses to answer instead of inventing
+    # one. Raise for stricter grounding, lower for more recall.
+    #
+    # Calibrated against gemini-embedding-2 on a small web project:
+    #   on-topic query  -> chunks scored 0.46 - 0.52
+    #   off-topic query -> chunks scored 0.216 - 0.236
+    # 0.35 sits in that gap. This is a limited sample, so treat it as a
+    # starting point: if legitimate questions start getting refused, lower it;
+    # if unrelated chunks keep slipping through, raise it. Changing the
+    # embedding model invalidates this number entirely.
+    retrieval_min_score: float = 0.35
+
+    # Maximum number of distinct files cited back to the user.
+    max_citations: int = 6
 
     # ── Agent ───────────────────────────────────────────────────
     max_iterations: int = 5

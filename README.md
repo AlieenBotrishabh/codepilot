@@ -112,7 +112,7 @@ flowchart LR
 
     C --> E["Extract & walk tree"]
     E --> F["Filter ignore list<br/>node_modules · .git · .next · venv"]
-    F --> G["Language-aware chunking<br/>size 1000 · overlap 200"]
+    F --> G["Recursive character chunking<br/>size 1000 · overlap 200"]
     G --> H["Embed via Gemini<br/>batch 5 · exponential backoff"]
     H --> I[("Persist to Chroma<br/>collection repo-{id}")]
     I --> K["Job: completed<br/>Repo: ready"]

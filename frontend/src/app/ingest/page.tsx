@@ -29,7 +29,7 @@ const THEMES = [
 
 const PIPELINE = [
   { icon: <FileCode className="w-4 h-4" />,   title: "Parse & filter",   desc: "Ignore lists strip build output, lockfiles and binaries." },
-  { icon: <Layers className="w-4 h-4" />,     title: "Chunk",            desc: "Language-aware splitting keeps functions intact." },
+  { icon: <Layers className="w-4 h-4" />,     title: "Chunk",            desc: "Recursive splitting with overlap preserves context." },
   { icon: <Database className="w-4 h-4" />,   title: "Embed & persist",  desc: "Vectors land in Chroma, metadata in MongoDB." },
   { icon: <ShieldCheck className="w-4 h-4" />,title: "Ready to query",   desc: "Ask, debug, review or patch from the workspace." },
 ];

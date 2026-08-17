@@ -2,7 +2,8 @@
 CodePilot RAG — Patch Generation Routes
 Dedicated endpoints for generating unified patches/diffs.
 """
-from fastapi import APIRouter, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from app.api.deps import require_api_key
 from app.models.schemas import PatchRequest, PatchResponse, Citation, ApplyPatchRequest
 from app.api.routes.chat import chat_interaction
 from app.models.schemas import ChatRequest
@@ -67,7 +68,7 @@ async def generate_patch_endpoint(request: PatchRequest):
     )
 
 
-@router.post("/apply")
+@router.post("/apply", dependencies=[Depends(require_api_key)])
 async def apply_patch_endpoint(
     request: ApplyPatchRequest,
     background_tasks: BackgroundTasks

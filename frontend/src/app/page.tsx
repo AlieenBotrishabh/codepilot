@@ -441,7 +441,7 @@ export default function LandingPage() {
                   {[
                     { label: "Choose a source", sub: "Local path, Git URL or ZIP", done: true },
                     { label: "Filter ignore lists", sub: "node_modules, build artifacts", done: false },
-                    { label: "Chunk & embed", sub: "Language-aware splitting", done: false },
+                    { label: "Chunk & embed", sub: "Recursive splitting with overlap", done: false },
                     { label: "Persist to Chroma", sub: "Vector index ready to query", done: false },
                   ].map(s => (
                     <li key={s.label} className="flex items-start gap-3">
