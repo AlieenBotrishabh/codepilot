@@ -103,14 +103,32 @@ class Settings(BaseSettings):
     # NOTHING clears the bar the agent refuses to answer instead of inventing
     # one. Raise for stricter grounding, lower for more recall.
     #
-    # Calibrated against gemini-embedding-2 on a small web project:
-    #   on-topic query  -> chunks scored 0.46 - 0.52
-    #   off-topic query -> chunks scored 0.216 - 0.236
-    # 0.35 sits in that gap. This is a limited sample, so treat it as a
-    # starting point: if legitimate questions start getting refused, lower it;
-    # if unrelated chunks keep slipping through, raise it. Changing the
-    # embedding model invalidates this number entirely.
-    retrieval_min_score: float = 0.35
+    # Measured against gemini-embedding-2 across a spread of real questions:
+    #   "how does the balance get calculated"      -> 0.5125
+    #   "what is the tech stack used here"         -> 0.4426
+    #   "what does this project do"                -> 0.4127
+    #   "list the main files in this repository"   -> 0.3803
+    #   "explain the project structure"            -> 0.3525   <- lowest genuine
+    #   deliberately unrelated query               -> 0.2360   <- highest bogus
+    #
+    # An earlier value of 0.35 was derived from only the two extremes and sat
+    # INSIDE the band of legitimate questions, so ordinary high-level queries
+    # were refused. 0.25 leaves ~0.10 of headroom under the weakest real
+    # question while still clearing the unrelated band by ~0.015.
+    #
+    # Note this floor is a quality control, not the safety net: the guard that
+    # actually prevents ungrounded answers is the empty-chunk check in the
+    # generation nodes, which fires whenever retrieval returns nothing at all
+    # (a lost or empty index) regardless of this value.
+    #
+    # Re-measure if the embedding model changes.
+    retrieval_min_score: float = 0.25
+
+    # Secondary, relative filter applied after the absolute floor: discard
+    # chunks scoring below this fraction of the best chunk for the query. This
+    # trims a weak tail without ever causing a refusal, because the top-scoring
+    # chunk is by definition retained. Set to 0 to disable.
+    retrieval_relative_cutoff: float = 0.6
 
     # Maximum number of distinct files cited back to the user.
     max_citations: int = 6

@@ -553,22 +553,58 @@ the service, the disk and every variable.
 | :--- | :--- |
 | Root Directory | `backend` |
 | Runtime | Docker |
-| Instance Type | **Starter or higher** (free has no disk) |
+| Instance Type | **Starter or higher** — the free tier has no persistent disk |
 | Health Check Path | `/health` |
 | Disk Mount | `/app/data`, 1 GB |
+| Replicas | **1** — see the warning below |
 
 Secrets are marked `sync: false` and entered in the dashboard — never committed:
 
 ```
-MONGODB_URL       = mongodb+srv://…
-GOOGLE_API_KEY    = …
-CORS_ORIGINS      = https://frontend-theta-olive-55.vercel.app,http://localhost:3000
-CORS_ORIGIN_REGEX = https://frontend-[a-z0-9-]+-<your-team>-projects\.vercel\.app
+MONGODB_URL        = mongodb+srv://…
+GOOGLE_API_KEY     = …
+CHROMA_PERSIST_DIR = /app/data/chroma
+UPLOAD_DIR         = /app/data/uploads
+API_KEY            = <long random string>
+ALLOW_LOCAL_INGEST = false
+CORS_ORIGINS       = https://frontend-theta-olive-55.vercel.app,http://localhost:3000
+CORS_ORIGIN_REGEX  = https://frontend-[a-z0-9-]+-<your-team>-projects\.vercel\.app
 ```
 
-> `*.onrender.com` subdomains are **globally unique**. If your chosen name is taken,
-> Render assigns a suffixed hostname — read the real URL from the dashboard rather
-> than assuming it.
+> **Attach the disk before ingesting anything.** A container filesystem without a
+> mounted disk is wiped on every restart. The Chroma index and uploaded archives
+> go with it, while MongoDB keeps reporting repositories as `ready` — the exact
+> split-brain the reconciliation in `list_repos` now surfaces as `error`.
+
+> **Keep replicas at 1.** The chat rate limiter is a module-level dictionary
+> guarded by an `asyncio.Lock`, and ingestion runs through FastAPI
+> `BackgroundTasks` inside the web process. With more than one replica each
+> instance keeps its own counter and jobs are invisible to the others. A shared
+> store (Redis) and an external worker are prerequisites for scaling out.
+
+> `*.onrender.com` subdomains are **globally unique**. If your chosen name is
+> taken, Render assigns a suffixed hostname — read the real URL from the
+> dashboard rather than assuming it.
+
+<details>
+<summary>Alternative: Railway</summary>
+
+[`backend/railway.json`](backend/railway.json) configures the same service on
+Railway, which bills per second of actual CPU and memory rather than a flat
+instance fee.
+
+Set **Root Directory** to `backend`, add a **Volume** mounted at `/app/data`
+(volumes cannot be declared in `railway.json` — dashboard or CLI only), then add
+the same variables as above and generate a domain.
+
+The Dockerfile needs no change: `CMD ["sh", "-c", "uvicorn app.main:app --host
+0.0.0.0 --port ${PORT:-8000}"]` binds the injected `PORT` on either platform.
+
+Sizing note: the service idles at roughly 183 MB resident and grows during
+ingestion. Railway's Free plan drops to 0.5 GB RAM and 0.5 GB of volume storage
+after its 30-day trial, so Hobby is the practical floor there.
+
+</details>
 
 ### 3 · Frontend on Vercel
 

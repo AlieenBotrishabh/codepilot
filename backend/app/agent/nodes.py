@@ -150,25 +150,41 @@ async def retrieve_context(state: AgentState) -> dict[str, Any]:
         logger.warning("Retrieval failed for repo %s: %s", repo_id, exc)
         return {"retrieved_chunks": []}
 
-    chunks: list[dict[str, Any]] = []
-    discarded = 0
-
+    # Pass 1 - absolute floor. Anything below this is not plausibly related.
+    scored: list[tuple[Any, float]] = []
     for doc, score in results:
         score = float(score)
-        if score < settings.retrieval_min_score:
-            discarded += 1
-            continue
-        chunks.append({
-            "page_content": doc.page_content,
-            "file_path": doc.metadata.get("file_path", "unknown"),
-            "language": doc.metadata.get("language", "unknown"),
-            "symbols": doc.metadata.get("symbols", ""),
-            "score": score,
-        })
+        if score >= settings.retrieval_min_score:
+            scored.append((doc, score))
+
+    below_floor = len(results) - len(scored)
+
+    # Pass 2 - relative cutoff. Drop the weak tail relative to the best match
+    # for THIS query, which adapts to questions that are inherently vaguer than
+    # others. The top chunk always survives, so this can never trigger a
+    # refusal on its own.
+    trimmed = 0
+    if scored and settings.retrieval_relative_cutoff > 0:
+        best = max(s for _, s in scored)
+        keep = [(d, s) for d, s in scored
+                if s >= best * settings.retrieval_relative_cutoff]
+        trimmed = len(scored) - len(keep)
+        scored = keep
+
+    chunks: list[dict[str, Any]] = [{
+        "page_content": doc.page_content,
+        "file_path": doc.metadata.get("file_path", "unknown"),
+        "language": doc.metadata.get("language", "unknown"),
+        "symbols": doc.metadata.get("symbols", ""),
+        "score": score,
+    } for doc, score in scored]
 
     logger.info(
-        "Retrieval repo=%s kept=%d discarded=%d min_score=%.2f",
-        repo_id, len(chunks), discarded, settings.retrieval_min_score,
+        "Retrieval repo=%s retrieved=%d kept=%d below_floor=%d trimmed=%d "
+        "top=%.4f min_score=%.2f",
+        repo_id, len(results), len(chunks), below_floor, trimmed,
+        max((c["score"] for c in chunks), default=0.0),
+        settings.retrieval_min_score,
     )
 
     return {"retrieved_chunks": chunks}
