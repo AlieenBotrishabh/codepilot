@@ -287,6 +287,12 @@ function ChatWorkspace() {
   // Display-only: filter the thread list
   const [threadSearch, setThreadSearch] = useState("");
 
+  // Below the md breakpoint the Files/Patch/Plan panel cannot sit beside the
+  // chat, so it becomes a full-screen overlay. Without this it was simply
+  // hidden, which silently removed patch review and "Apply Patch" on narrow
+  // viewports even though the buttons that open it stayed clickable.
+  const [panelOpen, setPanelOpen] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -676,10 +682,19 @@ function ChatWorkspace() {
       <div className="flex-1 flex overflow-hidden min-w-0">
 
         {/* ── Left panel: Files / Patch / Plan ───────────────────────── */}
-        <section className="w-[320px] lg:w-[380px] flex-shrink-0 hidden md:flex flex-col border-r border-gray-200 bg-white overflow-hidden">
+        <section
+          className={`${panelOpen ? "flex" : "hidden"} md:flex fixed inset-0 z-40 w-full md:static md:z-auto md:w-[320px] lg:w-[380px] flex-shrink-0 flex-col border-r border-gray-200 bg-white overflow-hidden`}
+        >
 
           {/* Tab bar */}
-          <div className="flex border-b border-gray-200 flex-shrink-0 overflow-x-auto no-scrollbar px-2">
+          <div className="flex items-center border-b border-gray-200 flex-shrink-0 overflow-x-auto no-scrollbar px-2">
+            <button
+              className="ghost md:hidden mr-1 flex-shrink-0"
+              onClick={() => setPanelOpen(false)}
+              title="Close panel"
+            >
+              <X className="w-4 h-4" />
+            </button>
             {[
               { id: "files",  label: "Codebase",   icon: <FileText className="w-3.5 h-3.5" /> },
               { id: "patch",  label: "Code Patch", icon: <GitPullRequest className="w-3.5 h-3.5" />, disabled: !currentPatch },
@@ -907,6 +922,13 @@ function ChatWorkspace() {
 
           {/* Chat header */}
           <div className="flex items-center justify-between gap-4 flex-wrap px-5 py-3 border-b border-gray-200 flex-shrink-0 bg-white/85 backdrop-blur-xl">
+            <button
+              className="ghost md:hidden flex-shrink-0"
+              onClick={() => setPanelOpen(true)}
+              title="Open codebase panel"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
             <div className="flex flex-col min-w-0">
               <h3 className="text-sm font-semibold tracking-tight truncate">
                 {repoInfo?.name || "Active Workspace"}
@@ -1022,7 +1044,7 @@ function ChatWorkspace() {
                       {/* Plan badge */}
                       {m.plan && (
                         <button
-                          onClick={() => { setCurrentPlan(m.plan || null); setActiveTab("plan"); }}
+                          onClick={() => { setCurrentPlan(m.plan || null); setActiveTab("plan"); setPanelOpen(true); }}
                           className="plan-badge-btn self-start !bg-amber-50 !text-amber-700 !border !border-amber-200 !px-3 !py-1.5 !text-xs !font-medium !shadow-none"
                         >
                           <Terminal className="w-3 h-3" /> View Solution Plan
@@ -1032,7 +1054,7 @@ function ChatWorkspace() {
                       {/* Patch badge */}
                       {m.patch && (
                         <button
-                          onClick={() => { setCurrentPatch(m.patch || null); setActiveTab("patch"); }}
+                          onClick={() => { setCurrentPatch(m.patch || null); setActiveTab("patch"); setPanelOpen(true); }}
                           className="patch-badge-btn self-start !bg-gray-900 !text-white !px-3 !py-1.5 !text-xs !font-medium"
                         >
                           <GitPullRequest className="w-3 h-3" /> View Code Patch

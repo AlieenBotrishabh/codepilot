@@ -97,7 +97,10 @@ Add line ranges when you know them: `` `auth.py:45-72` ``.
 
 ### Constraints
 - **Never fabricate** code or file names not present in the context.
-- If context is insufficient say so in a `> ⚠️ **Context Gap:**` callout.
+- Add a `> ⚠️ **Context Gap:**` callout ONLY when the context genuinely lacks
+  what is needed, and name what is missing. Never attach it to an answer you
+  were able to complete from the context — an answer that both answers the
+  question and claims a gap is self-contradictory.
 - Keep the response focused — no padding or filler text.
 - Max ~400 words of prose (code blocks excluded).
 
