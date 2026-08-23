@@ -64,3 +64,74 @@ async def require_api_key_for_chat(x_api_key: str | None = Header(default=None))
     if not settings.protect_chat:
         return
     _verify(x_api_key)
+
+
+# ── User authentication (GitHub OAuth sessions) ─────────────────────────────
+
+def _bearer(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    parts = authorization.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    return parts[1].strip() or None
+
+
+async def get_optional_user(
+    authorization: str | None = Header(default=None),
+):
+    """Resolve the signed-in user, or None.
+
+    Never raises. Used by endpoints that must keep working for anonymous
+    callers while still scoping data when someone IS signed in.
+    """
+    from app.models.db_models import User
+    from app.services.auth_service import decode_session_token
+
+    token = _bearer(authorization)
+    if not token:
+        return None
+
+    claims = decode_session_token(token)
+    if not claims:
+        return None
+
+    return await User.find_one(User.user_id == claims.get("sub"))
+
+
+async def get_current_user(
+    authorization: str | None = Header(default=None),
+):
+    """Require a signed-in user whenever AUTH_REQUIRED is on.
+
+    With AUTH_REQUIRED off this behaves like get_optional_user, so the public
+    demo keeps working unchanged and enabling auth is a single config flip.
+    """
+    user = await get_optional_user(authorization)
+
+    if user is None and settings.auth_required:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sign in with GitHub to use this endpoint.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
+
+
+async def require_user(
+    authorization: str | None = Header(default=None),
+):
+    """Always require a signed-in user, regardless of AUTH_REQUIRED.
+
+    For endpoints that are meaningless without an identity — anything reading
+    the caller's own GitHub account.
+    """
+    user = await get_optional_user(authorization)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sign in with GitHub to use this endpoint.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user

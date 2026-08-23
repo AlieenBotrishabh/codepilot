@@ -69,7 +69,45 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 100
 
     # ── GitHub ──────────────────────────────────────────────────
+    # Fallback PAT used when a request has no authenticated user (e.g. the
+    # public demo cloning a public repo). Per-user OAuth tokens take priority.
     github_token: str = ""
+
+    # ── Authentication ──────────────────────────────────────────
+    # Master switch. When False the API behaves exactly as before: no login,
+    # no per-user scoping, every repository visible to everyone. Turn it on to
+    # require a signed-in user and isolate each user's data.
+    auth_required: bool = False
+
+    # GitHub OAuth App credentials. Create the app at
+    #   https://github.com/settings/developers
+    # and set the callback to  <API_BASE>/auth/github/callback
+    github_client_id: str = ""
+    github_client_secret: str = ""
+
+    # OAuth scopes. Identity only — deliberately NOT requesting "repo", because
+    # this application does not read repositories on the user's behalf. Asking
+    # for the narrowest scope that works keeps the consent screen honest and
+    # limits the blast radius if the OAuth app is ever compromised.
+    github_oauth_scopes: str = "read:user user:email"
+
+    # Where to send the browser after a successful callback. The session token
+    # is appended as a fragment so it never lands in server logs or Referer.
+    frontend_url: str = "http://localhost:3000"
+
+    # Session JWT signing. Falls back to secret_key when unset, but set this
+    # explicitly in production — rotating it invalidates every session.
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_hours: int = 24 * 7
+
+    @property
+    def effective_jwt_secret(self) -> str:
+        return self.jwt_secret or self.secret_key
+
+    @property
+    def github_oauth_configured(self) -> bool:
+        return bool(self.github_client_id and self.github_client_secret)
 
     # ── Security ────────────────────────────────────────────────
     # When empty, authentication is DISABLED and every endpoint is public

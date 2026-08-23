@@ -12,7 +12,7 @@ import chromadb
 from app.config import get_settings
 from app.services.memory import init_db
 from app.services.vectorstore import get_chroma_client
-from app.api.routes import repo, chat, patch, jobs
+from app.api.routes import repo, chat, patch, jobs, auth
 from app.models.schemas import HealthResponse
 
 # Setup logging
@@ -75,6 +75,7 @@ logger.info(
 )
 
 # Include API endpoints routers
+app.include_router(auth.router)
 app.include_router(repo.router)
 app.include_router(chat.router)
 app.include_router(patch.router)

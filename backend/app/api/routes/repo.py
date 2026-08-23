@@ -12,9 +12,9 @@ import zipfile
 from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, Depends, HTTPException, status
 from pydantic import HttpUrl
 
-from app.api.deps import require_api_key
+from app.api.deps import require_api_key, get_current_user
 from app.config import get_settings
-from app.models.db_models import Repository, Job
+from app.models.db_models import Repository, Job, User
 from app.models.schemas import RepoUploadResponse, RepoListResponse, RepoInfo, LocalRepoIngestRequest
 from app.services.job_queue import JobQueueService
 from app.services.ingestion import IngestionService
@@ -23,6 +23,33 @@ from app.services.vectorstore import get_vectorstore_service
 router = APIRouter(prefix="/repos", tags=["Repositories"])
 settings = get_settings()
 vector_service = get_vectorstore_service()
+
+
+# ── Ownership ───────────────────────────────────────────────────────────────
+# A repository with owner_id=None predates authentication (or was created while
+# AUTH_REQUIRED was off). Those stay readable by everyone so that switching auth
+# on never silently orphans existing data. Anything WITH an owner is private to
+# that owner.
+
+def _owns(repo: Repository, user: User | None) -> bool:
+    if repo.owner_id is None:
+        return True
+    return user is not None and repo.owner_id == user.user_id
+
+
+async def _get_owned_repo(repo_id: str, user: User | None) -> Repository:
+    """Fetch a repository the caller is allowed to touch.
+
+    Returns 404 rather than 403 for someone else's repository, so the endpoint
+    does not confirm that a given repo_id exists to a user who cannot see it.
+    """
+    repo = await Repository.find_one(Repository.repo_id == repo_id)
+    if not repo or not _owns(repo, user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Repository not found.",
+        )
+    return repo
 
 
 @router.post(
@@ -35,6 +62,7 @@ async def upload_repo(
     background_tasks: BackgroundTasks,
     file: UploadFile | None = File(None),
     github_url: str | None = Form(None),
+    user: User | None = Depends(get_current_user),
 ):
     """
     Ingest a repository.
@@ -86,6 +114,7 @@ async def upload_repo(
         source_url=github_url,
         upload_path=upload_path,
         status="indexing",
+        owner_id=user.user_id if user else None,
     )
     await repo.insert()
 
@@ -120,6 +149,7 @@ async def upload_repo(
 async def ingest_local_path(
     request: LocalRepoIngestRequest,
     background_tasks: BackgroundTasks,
+    user: User | None = Depends(get_current_user),
 ):
     """
     Ingest a repository from a local directory path on the system.
@@ -236,7 +266,7 @@ async def ingest_local_path(
 
 
 @router.get("", response_model=RepoListResponse)
-async def list_repos():
+async def list_repos(user: User | None = Depends(get_current_user)):
     """List all indexed repositories, reconciled against the live vector index.
 
     Repository metadata lives in MongoDB while the vectors live in Chroma, so
@@ -248,6 +278,8 @@ async def list_repos():
     Reporting the live chunk count makes the drift visible instead of silent.
     """
     repos = await Repository.find_all().to_list()
+    # Hide other users' repositories. Legacy rows (owner_id=None) stay visible.
+    repos = [r for r in repos if _owns(r, user)]
     repo_infos = []
 
     for r in repos:
@@ -287,9 +319,9 @@ async def list_repos():
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(require_api_key)],
 )
-async def delete_repo(repo_id: str):
+async def delete_repo(repo_id: str, user: User | None = Depends(get_current_user)):
     """Delete repository metadata, uploaded zip files, and Chroma collection."""
-    repo = await Repository.find_one(Repository.repo_id == repo_id)
+    repo = await _get_owned_repo(repo_id, user)
     if not repo:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -313,10 +345,10 @@ async def delete_repo(repo_id: str):
 
 
 @router.get("/{repo_id}/files")
-async def list_repo_files(repo_id: str):
+async def list_repo_files(repo_id: str, user: User | None = Depends(get_current_user)):
     """List all relative file paths within the repository ZIP archive."""
     import zipfile
-    repo = await Repository.find_one(Repository.repo_id == repo_id)
+    repo = await _get_owned_repo(repo_id, user)
     if not repo:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -345,10 +377,10 @@ async def list_repo_files(repo_id: str):
 
 
 @router.get("/{repo_id}/files/content")
-async def get_repo_file_content(repo_id: str, path: str):
+async def get_repo_file_content(repo_id: str, path: str, user: User | None = Depends(get_current_user)):
     """Retrieve the text content of a specific file within the repository ZIP archive."""
     import zipfile
-    repo = await Repository.find_one(Repository.repo_id == repo_id)
+    repo = await _get_owned_repo(repo_id, user)
     if not repo:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -379,10 +411,10 @@ async def get_repo_file_content(repo_id: str, path: str):
 
 
 @router.get("/{repo_id}/download")
-async def download_repo_archive(repo_id: str):
+async def download_repo_archive(repo_id: str, user: User | None = Depends(get_current_user)):
     """Download the repository ZIP archive."""
     from fastapi.responses import FileResponse
-    repo = await Repository.find_one(Repository.repo_id == repo_id)
+    repo = await _get_owned_repo(repo_id, user)
     if not repo or not repo.upload_path or not os.path.exists(repo.upload_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

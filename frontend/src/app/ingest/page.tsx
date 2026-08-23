@@ -19,6 +19,7 @@ import {
   FileCode,
 } from "lucide-react";
 import { api } from "../../lib/api";
+import AuthButton from "../../components/AuthButton";
 
 const THEMES = [
   { id: "nebula",  label: "Nebula",  color: "#7c3aed" },
@@ -185,6 +186,7 @@ function IngestWorkspace() {
                 />
               ))}
             </div>
+            <AuthButton compact />
             <button className="secondary !px-5 !py-2.5 !text-sm" onClick={() => router.push("/")}>
               <ArrowLeft className="w-3.5 h-3.5" /> Back to Dashboard
             </button>

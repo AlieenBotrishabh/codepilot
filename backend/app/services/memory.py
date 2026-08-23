@@ -8,7 +8,7 @@ from beanie import init_beanie
 from pymongo import MongoClient
 
 from app.config import get_settings
-from app.models.db_models import Repository, Thread, Message, Job
+from app.models.db_models import Repository, Thread, Message, Job, User
 
 settings = get_settings()
 
@@ -18,7 +18,7 @@ async def init_db() -> None:
     client = AsyncIOMotorClient(settings.mongodb_url)
     await init_beanie(
         database=client[settings.mongodb_db_name],
-        document_models=[Repository, Thread, Message, Job],
+        document_models=[Repository, Thread, Message, Job, User],
     )
 
 

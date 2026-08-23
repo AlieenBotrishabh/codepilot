@@ -26,21 +26,31 @@ settings = get_settings()
 vector_service = get_vectorstore_service()
 
 
-async def download_github_repo(url: str, dest_dir: Path) -> None:
-    """Clones a public Git repository asynchronously."""
-    # Use gitpython run in a threadpool to avoid blocking event loop
-    loop = asyncio.get_event_loop()
-    # Mask token if configured
-    clone_url = url
-    if settings.github_token:
-        # Check if URL starts with https://github.com
-        if "github.com" in url and not "oauth2" in url:
-            clone_url = url.replace("https://", f"https://x-access-token:{settings.github_token}@")
+async def download_github_repo(url: str, dest_dir: Path,
+                               token: str | None = None) -> None:
+    """Clone a Git repository, using a token when one is available.
 
-    await loop.run_in_executor(
-        None,
-        lambda: GitRepo.clone_from(clone_url, dest_dir, depth=1)
-    )
+    The token is injected into the clone URL and never logged or persisted —
+    GitPython receives it, the clone completes, and the string is discarded.
+    """
+    loop = asyncio.get_event_loop()
+
+    clone_url = url
+    effective = token or settings.github_token
+    if effective and "github.com" in url and "oauth2" not in url and "@" not in url.split("//", 1)[-1].split("/")[0]:
+        clone_url = url.replace("https://", f"https://x-access-token:{effective}@", 1)
+
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: GitRepo.clone_from(clone_url, dest_dir, depth=1)
+        )
+    except Exception as exc:
+        # Never let a credential reach logs or the user-facing error string.
+        message = str(exc)
+        if effective:
+            message = message.replace(effective, "***")
+        raise RuntimeError(f"git clone failed: {message}") from None
 
 
 async def extract_zip_file(zip_path: Path, dest_dir: Path) -> None:

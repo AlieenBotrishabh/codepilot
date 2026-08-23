@@ -55,6 +55,26 @@ services:
       - key: CORS_ORIGIN_REGEX
         value: https://frontend-[a-z0-9-]+-alieenbotrishabhs-projects\.vercel\.app
 
+      # GitHub OAuth App credentials. Callback URL registered on GitHub must be
+      #   https://<this-service>.onrender.com/auth/github/callback
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+
+      # Signs session JWTs and encrypts stored GitHub tokens. Rotating it logs
+      # everyone out and forces a GitHub reconnect.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Must point at the deployed web app, not this API.
+      - key: FRONTEND_URL
+        sync: false
+
+      # Flip to true once GitHub OAuth is configured and verified.
+      - key: AUTH_REQUIRED
+        value: "false"
+
       # ── Non-secret configuration ──
       - key: MONGODB_DB_NAME
         value: copilot_rag

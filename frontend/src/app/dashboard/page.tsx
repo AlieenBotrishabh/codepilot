@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { api, RepoInfo } from "../../lib/api";
+import AuthButton from "../../components/AuthButton";
 
 const THEMES = [
   { id: "nebula",  label: "Nebula",  color: "#7c3aed" },
@@ -158,6 +159,7 @@ function DashboardContent() {
                 />
               ))}
             </div>
+            <AuthButton compact />
             <button className="secondary !px-4 !py-2 !text-sm hidden sm:inline-flex" onClick={() => router.push("/")}>
               <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
