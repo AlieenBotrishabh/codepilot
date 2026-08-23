@@ -1,8 +1,9 @@
 """
 CodePilot RAG — Authentication Routes
 
-GitHub is the identity provider only. Signing in proves who you are; it grants
-this application no access to your repositories.
+GitHub provides both identity and repository access. Signing in proves who you
+are and authorizes CodePilot to list and clone repositories you can reach,
+including private ones when the "repo" scope is granted.
 
 Flow:
     1. Browser hits  GET /auth/github/login       -> redirect to GitHub consent
@@ -15,7 +16,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
-from app.api.deps import get_optional_user
+from app.api.deps import get_optional_user, require_user
 from app.config import get_settings
 from app.models.db_models import User
 from app.services import auth_service
@@ -80,10 +81,11 @@ async def github_callback(request: Request, code: str | None = None,
         return _frontend_redirect("error=invalid_state")
 
     try:
-        # The access token lives only for the duration of this request.
-        token = await auth_service.exchange_code_for_token(code, _callback_url(request))
+        token, scopes = await auth_service.exchange_code_for_token(
+            code, _callback_url(request)
+        )
         profile = await auth_service.fetch_github_profile(token)
-        user = await auth_service.upsert_user(profile)
+        user = await auth_service.upsert_user(profile, token, scopes)
     except Exception as exc:
         logger.error("GitHub OAuth exchange failed: %s", exc)
         return _frontend_redirect("error=exchange_failed")
@@ -118,6 +120,10 @@ async def read_me(user: User | None = Depends(get_optional_user)):
             "name": user.name,
             "email": user.email,
             "avatar_url": user.avatar_url,
+            "github_connected": bool(
+                auth_service.decrypt_token(user.encrypted_github_token)
+            ),
+            "can_read_private": "repo" in (user.github_scopes or ""),
         },
     }
 
@@ -133,4 +139,41 @@ async def logout(user: User | None = Depends(get_optional_user)):
     return {
         "message": "Signed out. Discard the session token on the client.",
         "revoked_server_side": False,
+    }
+
+
+@router.delete("/auth/github/disconnect")
+async def disconnect_github(user: User = Depends(require_user)):
+    """Forget the stored GitHub token while keeping the account."""
+    user.encrypted_github_token = None
+    user.github_scopes = None
+    await user.save()
+    return {"message": "GitHub disconnected. Private repositories are no longer readable."}
+
+
+# ── GitHub repositories ────────────────────────────────────────
+
+@router.get("/github/repos")
+async def list_github_repos(user: User = Depends(require_user)):
+    """List repositories the signed-in user can access, private included."""
+    token = auth_service.decrypt_token(user.encrypted_github_token)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GitHub is not connected for this account. Sign in with GitHub again.",
+        )
+
+    try:
+        repos = await auth_service.list_user_repositories(token)
+    except Exception as exc:
+        logger.error("Failed to list GitHub repositories for %s: %s", user.login, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not reach the GitHub API. Try again shortly.",
+        )
+
+    return {
+        "repos": repos,
+        "total": len(repos),
+        "can_read_private": "repo" in (user.github_scopes or ""),
     }

@@ -85,11 +85,10 @@ class Settings(BaseSettings):
     github_client_id: str = ""
     github_client_secret: str = ""
 
-    # OAuth scopes. Identity only — deliberately NOT requesting "repo", because
-    # this application does not read repositories on the user's behalf. Asking
-    # for the narrowest scope that works keeps the consent screen honest and
-    # limits the blast radius if the OAuth app is ever compromised.
-    github_oauth_scopes: str = "read:user user:email"
+    # OAuth scopes. "read:user" identifies the user; "repo" is what allows
+    # listing and cloning PRIVATE repositories. Drop "repo" for public-only
+    # access — the consent screen is noticeably less alarming without it.
+    github_oauth_scopes: str = "read:user user:email repo"
 
     # Where to send the browser after a successful callback. The session token
     # is appended as a fragment so it never lands in server logs or Referer.

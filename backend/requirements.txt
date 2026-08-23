@@ -24,8 +24,11 @@ chromadb>=1.5.9
 google-generativeai==0.8.3
 openai==1.58.1
 
-# Auth (GitHub OAuth sign-in + session JWTs)
+# Auth (GitHub OAuth + session JWTs)
+# cryptography is present transitively but pinned here because auth_service
+# uses Fernet directly to encrypt stored GitHub tokens.
 PyJWT==2.10.1
+cryptography>=42.0.0
 
 # MongoDB
 motor==3.6.0

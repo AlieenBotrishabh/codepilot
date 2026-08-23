@@ -1,19 +1,21 @@
 """
 CodePilot RAG — Authentication Service
 
-GitHub is used purely as an identity provider. The OAuth handshake establishes
-who the user is and nothing more: the access token is used once, server-side, to
-read the public profile, and is then discarded.
+GitHub OAuth covers BOTH concerns at once: it establishes who the user is, and
+it yields the token needed to read their repositories. That avoids running a
+separate password system alongside a separate GitHub connection flow.
 
-Deliberately NOT stored. A token that is never persisted cannot leak from the
-database, cannot be decrypted by a future attacker, and needs no key rotation
-policy. If repository access is ever added back, that decision has to be
-revisited along with encryption at rest.
+Because the token can read private repositories it is stored ENCRYPTED at rest,
+never in plaintext. Rotating the app secret makes stored tokens undecryptable,
+which surfaces to the user as "reconnect GitHub" rather than as an error.
 
-Two responsibilities:
+Three responsibilities:
   1. Session JWTs   — issue and verify bearer tokens.
-  2. OAuth exchange — swap an authorization code for a profile.
+  2. Token secrecy  — encrypt GitHub access tokens before they touch the DB.
+  3. OAuth exchange — swap an authorization code for a token and a profile.
 """
+import base64
+import hashlib
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -22,6 +24,7 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
+from cryptography.fernet import Fernet, InvalidToken
 
 from app.config import get_settings
 from app.models.db_models import User, utcnow
@@ -39,6 +42,38 @@ GITHUB_API = "https://api.github.com"
 # replica requires relocating this to Redis along with that limiter.
 _oauth_states: dict[str, datetime] = {}
 _STATE_TTL = timedelta(minutes=10)
+
+
+# ── Token encryption ────────────────────────────────────────────
+
+def _fernet() -> Fernet:
+    """Derive a stable Fernet key from the application secret.
+
+    Fernet needs a 32-byte urlsafe-base64 key while the configured secret is
+    arbitrary text, so it is hashed to a fixed width first.
+    """
+    digest = hashlib.sha256(settings.effective_jwt_secret.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def encrypt_token(raw: str) -> str:
+    return _fernet().encrypt(raw.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_token(blob: str | None) -> str | None:
+    """Return the plaintext token, or None when it cannot be decrypted.
+
+    A rotated secret makes every stored token undecryptable. That is treated as
+    "not connected" rather than an error, so the user is asked to reconnect
+    GitHub instead of hitting a 500.
+    """
+    if not blob:
+        return None
+    try:
+        return _fernet().decrypt(blob.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, ValueError):
+        logger.warning("Stored GitHub token could not be decrypted (secret rotated?)")
+        return None
 
 
 # ── Session JWTs ────────────────────────────────────────────────────────────
@@ -101,12 +136,8 @@ def consume_state(state: str | None) -> bool:
     return True
 
 
-async def exchange_code_for_token(code: str, redirect_uri: str) -> str:
-    """Trade an authorization code for a short-lived access token.
-
-    The caller uses the returned token immediately to read the profile and then
-    drops it; it is never returned to the browser or written to the database.
-    """
+async def exchange_code_for_token(code: str, redirect_uri: str) -> tuple[str, str]:
+    """Trade an authorization code for an access token. Returns (token, scopes)."""
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(
             GITHUB_TOKEN_URL,
@@ -129,7 +160,7 @@ async def exchange_code_for_token(code: str, redirect_uri: str) -> str:
     token = payload.get("access_token")
     if not token:
         raise ValueError("GitHub did not return an access token")
-    return token
+    return token, payload.get("scope", "")
 
 
 async def fetch_github_profile(token: str) -> dict[str, Any]:
@@ -164,7 +195,7 @@ async def fetch_github_profile(token: str) -> dict[str, Any]:
     return profile
 
 
-async def upsert_user(profile: dict[str, Any]) -> User:
+async def upsert_user(profile: dict[str, Any], token: str, scopes: str) -> User:
     """Create or refresh the local user record for a GitHub identity.
 
     Matching is on the numeric GitHub id, not the login, because usernames can
@@ -180,6 +211,8 @@ async def upsert_user(profile: dict[str, Any]) -> User:
             name=profile.get("name"),
             email=profile.get("email"),
             avatar_url=profile.get("avatar_url"),
+            encrypted_github_token=encrypt_token(token),
+            github_scopes=scopes,
         )
         await user.insert()
         logger.info("Registered new user %s (github_id=%s)", user.login, github_id)
@@ -188,8 +221,54 @@ async def upsert_user(profile: dict[str, Any]) -> User:
         user.name = profile.get("name")
         user.email = profile.get("email")
         user.avatar_url = profile.get("avatar_url")
+        user.encrypted_github_token = encrypt_token(token)
+        user.github_scopes = scopes
         user.last_login_at = utcnow()
         await user.save()
         logger.info("Signed in existing user %s", user.login)
 
     return user
+
+
+async def list_user_repositories(token: str, per_page: int = 100) -> list[dict[str, Any]]:
+    """List repositories the token can see, most recently pushed first."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+    repos: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Two pages is plenty for a picker UI and keeps the response quick.
+        for page in (1, 2):
+            resp = await client.get(
+                f"{GITHUB_API}/user/repos",
+                headers=headers,
+                params={
+                    "per_page": per_page,
+                    "page": page,
+                    "sort": "pushed",
+                    "affiliation": "owner,collaborator,organization_member",
+                },
+            )
+            if resp.status_code != 200:
+                break
+            batch = resp.json()
+            if not batch:
+                break
+            repos.extend(batch)
+            if len(batch) < per_page:
+                break
+
+    return [{
+        "full_name": r["full_name"],
+        "name": r["name"],
+        "private": r["private"],
+        "description": r.get("description"),
+        "language": r.get("language"),
+        "default_branch": r.get("default_branch"),
+        "html_url": r["html_url"],
+        "clone_url": r["clone_url"],
+        "updated_at": r.get("pushed_at") or r.get("updated_at"),
+        "stars": r.get("stargazers_count", 0),
+    } for r in repos]

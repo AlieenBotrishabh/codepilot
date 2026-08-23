@@ -94,6 +94,8 @@ export interface AuthUser {
   name?: string;
   email?: string;
   avatar_url?: string;
+  github_connected: boolean;
+  can_read_private: boolean;
 }
 
 export interface AuthState {
@@ -101,6 +103,19 @@ export interface AuthState {
   user: AuthUser | null;
   auth_required: boolean;
   github_oauth_configured: boolean;
+}
+
+export interface GitHubRepo {
+  full_name: string;
+  name: string;
+  private: boolean;
+  description?: string;
+  language?: string;
+  default_branch?: string;
+  html_url: string;
+  clone_url: string;
+  updated_at?: string;
+  stars: number;
 }
 
 export const api = {
@@ -135,6 +150,30 @@ export const api = {
       // logout. Done in `finally` so a network error still signs the user out.
       clearToken();
     }
+  },
+
+  async disconnectGitHub(): Promise<void> {
+    const res = await fetch(`${API_BASE}/auth/github/disconnect`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    if (!res.ok) await fail(res, "Failed to disconnect GitHub.");
+  },
+
+  async listGitHubRepos(): Promise<{ repos: GitHubRepo[]; total: number; can_read_private: boolean }> {
+    const res = await fetch(`${API_BASE}/github/repos`, { headers: authHeaders() });
+    if (!res.ok) await fail(res, "Failed to load your GitHub repositories.");
+    return res.json();
+  },
+
+  async ingestGitHubRepo(fullName: string): Promise<{ repo_id: string; name: string; job_id: string }> {
+    const res = await fetch(`${API_BASE}/repos/github`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ full_name: fullName }),
+    });
+    if (!res.ok) await fail(res, "Failed to ingest the selected repository.");
+    return res.json();
   },
 
   // ── Repositories ───────────────────────────────────────────────────────────

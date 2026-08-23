@@ -18,10 +18,10 @@ def utcnow() -> datetime:
 class User(Document):
     """A person signed in through GitHub OAuth.
 
-    GitHub is an identity provider only. The OAuth access token is used once
-    during the callback to read the public profile and is then discarded — it is
-    deliberately NOT stored, so there is no repository access to leak and no
-    encryption key to rotate.
+    The GitHub access token is stored ENCRYPTED (Fernet, keyed off the app
+    secret) rather than in plaintext, because it can read the user's private
+    repositories. Rotating SECRET_KEY/JWT_SECRET invalidates stored tokens and
+    forces users to reconnect, which is the intended failure mode.
     """
     user_id: Indexed(str, unique=True) = Field(default_factory=lambda: str(uuid4()))
     github_id: Indexed(int, unique=True)
@@ -29,6 +29,9 @@ class User(Document):
     name: str | None = None
     email: str | None = None
     avatar_url: str | None = None
+
+    encrypted_github_token: str | None = None
+    github_scopes: str | None = None
 
     created_at: datetime = Field(default_factory=utcnow)
     last_login_at: datetime = Field(default_factory=utcnow)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Github, LogOut, Loader2 } from "lucide-react";
+import { Github, LogOut, Loader2, ShieldCheck } from "lucide-react";
 import { api, AuthState } from "../lib/api";
 
 /**
@@ -70,6 +70,15 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
             <div className="px-1 pb-2.5 mb-2.5 border-b border-gray-100">
               <p className="text-sm font-semibold truncate">{user.name || user.login}</p>
               <p className="text-xs text-gray-500 truncate">{user.email || `@${user.login}`}</p>
+            </div>
+
+            <div className="flex items-center gap-2 px-1 pb-2.5 text-xs text-gray-600">
+              <ShieldCheck
+                className={`w-3.5 h-3.5 ${user.can_read_private ? "text-emerald-600" : "text-gray-400"}`}
+              />
+              {user.can_read_private
+                ? "Private repositories readable"
+                : "Public repositories only"}
             </div>
 
             <button

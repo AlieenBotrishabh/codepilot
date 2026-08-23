@@ -13,12 +13,16 @@ import {
   Code,
   Sparkles,
   Zap,
+  Github,
+  Lock,
+  RefreshCw,
+  Search,
   Layers,
   Database,
   ShieldCheck,
   FileCode,
 } from "lucide-react";
-import { api } from "../../lib/api";
+import { api, GitHubRepo } from "../../lib/api";
 import AuthButton from "../../components/AuthButton";
 
 const THEMES = [
@@ -45,7 +49,15 @@ function makeToast(set: React.Dispatch<React.SetStateAction<Toast[]>>, message: 
 
 function IngestWorkspace() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"local" | "github" | "zip">("local");
+  const [activeTab, setActiveTab] = useState<"local" | "github" | "zip" | "mine">("local");
+
+  // "My GitHub" tab — repositories reachable with the signed-in user's OAuth
+  // token, private ones included.
+  const [ghRepos, setGhRepos] = useState<GitHubRepo[]>([]);
+  const [ghLoading, setGhLoading] = useState(false);
+  const [ghError, setGhError] = useState("");
+  const [ghSearch, setGhSearch] = useState("");
+  const [ghSelected, setGhSelected] = useState<string | null>(null);
 
   // Form states
   const [localPath, setLocalPath] = useState("");
@@ -108,6 +120,26 @@ function IngestWorkspace() {
     return () => clearInterval(interval);
   }, [activeJobId, router]);
 
+  const loadGitHubRepos = async () => {
+    setGhLoading(true);
+    setGhError("");
+    try {
+      const data = await api.listGitHubRepos();
+      setGhRepos(data.repos);
+    } catch (err: any) {
+      setGhError(err.message || "Could not load your GitHub repositories.");
+    } finally {
+      setGhLoading(false);
+    }
+  };
+
+  // Fetch lazily, only once the tab is actually opened.
+  useEffect(() => {
+    if (activeTab === "mine" && ghRepos.length === 0 && !ghLoading && !ghError) {
+      loadGitHubRepos();
+    }
+  }, [activeTab]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
@@ -122,6 +154,9 @@ function IngestWorkspace() {
       } else if (activeTab === "github") {
         if (!githubUrl.trim()) throw new Error("Please specify a public Git URL.");
         result = await api.uploadRepo(undefined, githubUrl);
+      } else if (activeTab === "mine") {
+        if (!ghSelected) throw new Error("Select one of your repositories first.");
+        result = await api.ingestGitHubRepo(ghSelected);
       } else {
         if (!file) throw new Error("Please select a ZIP file.");
         result = await api.uploadRepo(file, undefined);
@@ -222,10 +257,11 @@ function IngestWorkspace() {
             style={{ opacity: 0, animationDelay: "0.2s" }}
           >
             {/* Source Tabs */}
-            <div className="bg-gray-100 rounded-lg p-1 grid grid-cols-3 gap-1 mb-8">
+            <div className="bg-gray-100 rounded-lg p-1 grid grid-cols-2 sm:grid-cols-4 gap-1 mb-8">
               {[
+                { id: "mine",   label: "My GitHub",         short: "Mine",   icon: <Github className="w-3.5 h-3.5" /> },
                 { id: "local",  label: "Local Directory",   short: "Local",  icon: <FolderOpen className="w-3.5 h-3.5" /> },
-                { id: "github", label: "GitHub Repository", short: "GitHub", icon: <GitBranch className="w-3.5 h-3.5" /> },
+                { id: "github", label: "Public URL",        short: "URL",    icon: <GitBranch className="w-3.5 h-3.5" /> },
                 { id: "zip",    label: "ZIP Archive",       short: "ZIP",    icon: <UploadCloud className="w-3.5 h-3.5" /> },
               ].map(tab => (
                 <button
@@ -251,6 +287,107 @@ function IngestWorkspace() {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+              {/* Tab: My GitHub repositories */}
+              {activeTab === "mine" && (
+                <div className="flex flex-col gap-3 fade-in">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                      <Github className="w-3.5 h-3.5 text-gray-500" /> Your repositories
+                    </label>
+                    <button
+                      type="button"
+                      className="secondary !px-3 !py-1.5 !text-xs"
+                      onClick={loadGitHubRepos}
+                      disabled={ghLoading}
+                      title="Refresh from GitHub"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${ghLoading ? "spin" : ""}`} /> Refresh
+                    </button>
+                  </div>
+
+                  {ghError ? (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-8 text-center">
+                      <p className="text-sm text-gray-700 mb-4">{ghError}</p>
+                      <button
+                        type="button"
+                        onClick={() => { window.location.href = api.githubLoginUrl(); }}
+                        className="!bg-black !text-white !px-5 !py-2.5 !rounded-full !text-sm !font-medium hover:!bg-gray-800"
+                      >
+                        <Github className="w-4 h-4" /> Connect GitHub
+                      </button>
+                    </div>
+                  ) : ghLoading ? (
+                    <div className="flex flex-col gap-2">
+                      {[0, 1, 2, 3].map(i => <div key={i} className="skeleton h-14 w-full" />)}
+                    </div>
+                  ) : ghRepos.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-6 text-center">
+                      No repositories found for this account.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Filter repositories…"
+                          value={ghSearch}
+                          onChange={e => setGhSearch(e.target.value)}
+                          disabled={busy}
+                          className="!pl-9 !py-2 !text-sm"
+                        />
+                      </div>
+
+                      <div className="max-h-[320px] overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+                        {ghRepos
+                          .filter(r =>
+                            r.full_name.toLowerCase().includes(ghSearch.toLowerCase()) ||
+                            (r.description || "").toLowerCase().includes(ghSearch.toLowerCase())
+                          )
+                          .map(r => (
+                            <button
+                              key={r.full_name}
+                              type="button"
+                              disabled={busy}
+                              onClick={() => setGhSelected(r.full_name)}
+                              className={`!w-full !justify-start !text-left !rounded-none !shadow-none !px-4 !py-3 ${
+                                ghSelected === r.full_name
+                                  ? "!bg-gray-900 !text-white"
+                                  : "!bg-white !text-gray-800 hover:!bg-gray-50"
+                              }`}
+                            >
+                              <span className="flex-1 min-w-0">
+                                <span className="flex items-center gap-2">
+                                  <span className="text-sm font-medium truncate">{r.full_name}</span>
+                                  {r.private && (
+                                    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${
+                                      ghSelected === r.full_name
+                                        ? "border-white/30 text-white/80"
+                                        : "border-amber-200 bg-amber-50 text-amber-700"
+                                    }`}>
+                                      <Lock className="w-2.5 h-2.5" /> private
+                                    </span>
+                                  )}
+                                </span>
+                                <span className={`block text-xs truncate mt-0.5 ${
+                                  ghSelected === r.full_name ? "text-white/70" : "text-gray-500"
+                                }`}>
+                                  {r.language ? `${r.language} · ` : ""}{r.description || "No description"}
+                                </span>
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+
+                      <span className="text-xs text-gray-500 leading-relaxed">
+                        Private repositories are cloned with your GitHub token, which is
+                        stored encrypted and never written to the repository record.
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Tab: Local Path */}
               {activeTab === "local" && (
                 <div className="flex flex-col gap-2.5 fade-in">
@@ -384,6 +521,7 @@ function IngestWorkspace() {
                   !!activeJobId ||
                   (activeTab === "local" && !localPath.trim()) ||
                   (activeTab === "github" && !githubUrl.trim()) ||
+                  (activeTab === "mine" && !ghSelected) ||
                   (activeTab === "zip" && !file)
                 }
                 className="!w-full !bg-black !text-white !py-3.5 !rounded-full !text-base !font-medium hover:!bg-gray-800"

@@ -26,6 +26,28 @@ settings = get_settings()
 vector_service = get_vectorstore_service()
 
 
+async def resolve_clone_token(owner_id: str | None) -> str | None:
+    """Pick the credential to clone with.
+
+    The owning user's OAuth token wins, because it is the only one that can
+    reach their private repositories. The server-wide PAT is a fallback for
+    anonymous or legacy ingests. Returns None when neither exists, which still
+    clones public repositories fine.
+    """
+    if owner_id:
+        # Imported here to avoid a circular import at module load.
+        from app.models.db_models import User
+        from app.services.auth_service import decrypt_token
+
+        user = await User.find_one(User.user_id == owner_id)
+        if user:
+            token = decrypt_token(user.encrypted_github_token)
+            if token:
+                return token
+
+    return settings.github_token or None
+
+
 async def download_github_repo(url: str, dest_dir: Path,
                                token: str | None = None) -> None:
     """Clone a Git repository, using a token when one is available.
@@ -84,7 +106,8 @@ class IngestionService:
             if repo.source_type == "github_url":
                 job.message = "Cloning repository from GitHub..."
                 await job.save()
-                await download_github_repo(repo.source_url, temp_dir)
+                clone_token = await resolve_clone_token(getattr(repo, "owner_id", None))
+                await download_github_repo(repo.source_url, temp_dir, clone_token)
                 # Zip the cloned repo and save to uploads/
                 upload_dir = Path(settings.upload_dir)
                 upload_dir.mkdir(parents=True, exist_ok=True)

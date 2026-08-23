@@ -10,9 +10,9 @@ from uuid import uuid4
 import asyncio
 import zipfile
 from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, Depends, HTTPException, status
-from pydantic import HttpUrl
+from pydantic import BaseModel, HttpUrl
 
-from app.api.deps import require_api_key, get_current_user
+from app.api.deps import require_api_key, get_current_user, require_user
 from app.config import get_settings
 from app.models.db_models import Repository, Job, User
 from app.models.schemas import RepoUploadResponse, RepoListResponse, RepoInfo, LocalRepoIngestRequest
@@ -262,6 +262,91 @@ async def ingest_local_path(
         name=repo_name,
         job_id=job.job_id,
         message="Local repository packaged and ingestion started in the background."
+    )
+
+
+class GitHubIngestRequest(BaseModel):
+    full_name: str          # "owner/repo"
+
+
+@router.post(
+    "/github",
+    response_model=RepoUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def ingest_github_repo(
+    request: GitHubIngestRequest,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_user),
+):
+    """Ingest one of the signed-in user's own GitHub repositories.
+
+    Unlike /repos/upload with a github_url, this always requires a session and
+    clones with the user's OAuth token, so PRIVATE repositories work. The token
+    is resolved at clone time from the owner record — it is never stored on the
+    repository row or embedded in source_url.
+    """
+    from app.services.auth_service import decrypt_token, list_user_repositories
+
+    token = decrypt_token(user.encrypted_github_token)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GitHub is not connected for this account. Sign in with GitHub again.",
+        )
+
+    # Confirm the caller actually has access to this repo rather than trusting
+    # the supplied name. Without this the endpoint would clone any repository
+    # the user's token can reach, including ones they never selected.
+    try:
+        available = await list_user_repositories(token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not reach the GitHub API. Try again shortly.",
+        )
+
+    match = next((r for r in available
+                  if r["full_name"].lower() == request.full_name.lower()), None)
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{request.full_name}' is not accessible with your GitHub account.",
+        )
+
+    repo_id = str(uuid4())
+    Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+
+    repo = Repository(
+        repo_id=repo_id,
+        name=match["name"],
+        description=match.get("description"),
+        source_type="github_url",
+        source_url=match["clone_url"],
+        status="indexing",
+        owner_id=user.user_id,
+        is_private=bool(match["private"]),
+    )
+    await repo.insert()
+
+    job = await JobQueueService.create_job(
+        job_type="ingestion",
+        metadata={"repo_id": repo_id, "name": match["name"],
+                  "private": match["private"]},
+    )
+    JobQueueService.start_job(
+        background_tasks, job.job_id,
+        IngestionService.process_ingestion, repo_id,
+    )
+
+    return RepoUploadResponse(
+        repo_id=repo_id,
+        name=match["name"],
+        job_id=job.job_id,
+        message=(
+            f"Cloning {'private' if match['private'] else 'public'} repository "
+            f"{match['full_name']}. Indexing has started in the background."
+        ),
     )
 
 
