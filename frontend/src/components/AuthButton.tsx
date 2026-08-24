@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Github, LogOut, Loader2, ShieldCheck } from "lucide-react";
+import { Github, LogOut, Loader2, ShieldCheck, RefreshCw } from "lucide-react";
 import { api, AuthState } from "../lib/api";
 
 /**
@@ -74,12 +74,27 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
 
             <div className="flex items-center gap-2 px-1 pb-2.5 text-xs text-gray-600">
               <ShieldCheck
-                className={`w-3.5 h-3.5 ${user.can_read_private ? "text-emerald-600" : "text-gray-400"}`}
+                className={`w-3.5 h-3.5 ${user.can_read_private ? "text-emerald-600" : "text-amber-500"}`}
               />
               {user.can_read_private
-                ? "Private repositories readable"
-                : "Public repositories only"}
+                ? "Repository access granted"
+                : "No repository access"}
             </div>
+
+            {/* A session created before the "repo" scope existed cannot list
+                repositories. GitHub re-prompts for consent when an app asks for
+                scopes beyond what was granted, so simply re-running the flow
+                upgrades the token — but a signed-in user otherwise has no way
+                to trigger it. */}
+            {!user.can_read_private && (
+              <button
+                onClick={() => { window.location.href = api.githubLoginUrl(); }}
+                className="!w-full !justify-start !bg-amber-50 !text-amber-800 !border !border-amber-200 !shadow-none hover:!bg-amber-100 !px-2 !py-2 !rounded-lg !text-sm mb-1"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Reconnect for repo access
+              </button>
+            )}
 
             <button
               disabled={busy}

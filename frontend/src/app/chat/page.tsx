@@ -57,14 +57,35 @@ function toast(set: React.Dispatch<React.SetStateAction<Toast[]>>, msg: string, 
 }
 
 // ── Rich markdown renderer ────────────────────────────────────────────────
-function renderMarkdown(text: string): string {
+//
+// SECURITY: the output of this function is injected with
+// dangerouslySetInnerHTML, so every character of untrusted input must be
+// neutralised BEFORE any markup is generated. Message content is attacker
+// -influenced (a user types it, or coaxes the model into echoing it) and is
+// persisted, so an unescaped tag here would be stored XSS — and the session
+// JWT lives in localStorage, which such a payload could exfiltrate.
+//
+// Escaping happens exactly once, on the whole string, as step 0. After that
+// the only '<' characters in play are the ones this function writes itself.
+// Most markdown syntax (# * | - `) passes through escaping untouched. The one
+// exception is the blockquote marker '>', which becomes '&gt;' — the parser
+// below matches that escaped form. Entities render back as literal characters
+// for the reader, so escaping is invisible in the UI.
+function renderMarkdown(rawText: string): string {
+  // 0. Neutralise all HTML before parsing. Everything downstream is now safe
+  //    to interpolate, which is why the code paths below no longer re-escape.
+  const text = escapeHtml(rawText);
+
   // 1. Protect fenced code blocks — replace them with placeholders
   const codeBlocks: string[] = [];
   let html = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, lang, code) => {
     const idx = codeBlocks.length;
-    const label = lang ? `<span class="code-lang">${lang}</span>` : "";
+    // The fence language lands inside a class attribute. Even escaped, it is
+    // restricted to word characters so it cannot break out of the attribute.
+    const safeLang = String(lang || "").replace(/[^a-zA-Z0-9_+-]/g, "");
+    const label = safeLang ? `<span class="code-lang">${safeLang}</span>` : "";
     codeBlocks.push(
-      `<div class="code-block-wrap">${label}<pre><code class="lang-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre></div>`
+      `<div class="code-block-wrap">${label}<pre><code class="lang-${safeLang || 'text'}">${code.trim()}</code></pre></div>`
     );
     return `%%CODE_BLOCK_${idx}%%`;
   });
@@ -72,7 +93,7 @@ function renderMarkdown(text: string): string {
   // 2. Inline elements
   html = html
     // Inline code
-    .replace(/`([^`]+)`/g, (_m, code) => `<code>${escapeHtml(code)}</code>`)
+    .replace(/`([^`]+)`/g, (_m, code) => `<code>${code}</code>`)
     // Bold + italic combined
     .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
     // Bold
@@ -136,8 +157,11 @@ function renderMarkdown(text: string): string {
       continue;
     }
     if (inTable && !line.trim().startsWith("|")) flushTable();
-    // Blockquotes — detect callout types
-    const bq = line.match(/^> (.+)/);
+    // Blockquotes — detect callout types.
+    // NOTE: matches the ESCAPED form. Step 0 turns a leading '>' into '&gt;',
+    // so the naive /^> / would never fire and every callout would silently
+    // degrade to plain text.
+    const bq = line.match(/^&gt;\s(.+)/);
     if (bq) {
       flushUl(); flushOl();
       const inner = bq[1];
@@ -191,6 +215,12 @@ function renderMarkdown(text: string): string {
   return result;
 }
 
+/**
+ * Neutralise every character with meaning in HTML.
+ *
+ * '&' must be replaced first, otherwise the entities introduced by the later
+ * replacements would themselves be re-escaped into visible text.
+ */
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")

@@ -163,6 +163,28 @@ async def list_github_repos(user: User = Depends(require_user)):
             detail="GitHub is not connected for this account. Sign in with GitHub again.",
         )
 
+    granted = user.github_scopes or ""
+    can_read_private = "repo" in granted
+
+    # A token issued before the "repo" scope was added cannot see repositories
+    # at all — /user/repos returns an empty list rather than an error. Reporting
+    # that as "no repositories found" sends people hunting for a problem that
+    # does not exist, so the scope gap is detected explicitly and surfaced as
+    # the actionable thing it is: sign in again to grant the wider scope.
+    if not can_read_private:
+        logger.info(
+            "User %s has scopes '%s' — missing 'repo', cannot list repositories",
+            user.login, granted or "(none)",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Your GitHub connection was authorized before repository access "
+                "was enabled, so it cannot list your repositories. Sign out and "
+                "sign in with GitHub again to grant it."
+            ),
+        )
+
     try:
         repos = await auth_service.list_user_repositories(token)
     except Exception as exc:
@@ -175,5 +197,6 @@ async def list_github_repos(user: User = Depends(require_user)):
     return {
         "repos": repos,
         "total": len(repos),
-        "can_read_private": "repo" in (user.github_scopes or ""),
+        "can_read_private": can_read_private,
+        "granted_scopes": granted,
     }
