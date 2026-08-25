@@ -32,6 +32,7 @@ a purpose-built engine depending on what you actually asked for.
 - [Live Deployment](#-live-deployment)
 - [Architecture](#-architecture)
 - [How It Works — Full Workflow](#-how-it-works--full-workflow)
+- [Data Flow](#-data-flow)
 - [Core Features](#-core-features)
 - [Tech Stack](#-tech-stack)
 - [Project Structure](#-project-structure)
@@ -241,6 +242,179 @@ flowchart LR
 
 ---
 
+## 🔀 Data Flow
+
+Three views of the same system: how data moves through the browser, how a
+request is processed on the server, and how the two meet during sign-in.
+
+### Frontend — where state lives and how it leaves
+
+Every network call funnels through `lib/api.ts`. Pages hold their own React
+state and never call `fetch` directly, so the auth header, error shape and
+401 handling are defined exactly once.
+
+```mermaid
+flowchart TB
+    subgraph Pages["Pages · Next.js App Router"]
+        DASH["dashboard/page.tsx<br/>repos · stats · search"]
+        ING["ingest/page.tsx<br/>4 source tabs · job polling"]
+        CHAT["chat/page.tsx<br/>threads · messages · diff"]
+        CB["auth/callback/page.tsx<br/>reads URL fragment"]
+    end
+
+    subgraph Shared["Shared modules"]
+        AB["components/AuthButton.tsx"]
+        API["lib/api.ts<br/><b>single HTTP boundary</b>"]
+    end
+
+    LS[("localStorage<br/>cprag-session · cprag-theme")]
+
+    CB -->|"setToken(jwt)"| LS
+    AB -->|"getAuthState()"| API
+    DASH -->|"listRepos · deleteRepo"| API
+    ING -->|"localIngest · uploadRepo<br/>ingestGitHubRepo · getJobStatus"| API
+    CHAT -->|"sendMessage · listThreads<br/>listMessages · applyPatch"| API
+
+    API -->|"authHeaders() reads"| LS
+    API -->|"401 -> clearToken()"| LS
+    API -->|"Authorization· Bearer token"| BE(["FastAPI"])
+
+    style API fill:#000,color:#fff
+    style LS fill:#fffbeb
+```
+
+**Two polling loops** drive the live UI, both on `setInterval` at 1.5s:
+
+| Page | Polls | Until |
+| :--- | :--- | :--- |
+| `ingest` | `GET /jobs/{id}` | job is `completed` or `failed` |
+| `chat` | `GET /jobs/{id}` after applying a patch | re-index finishes, then reloads files |
+
+### Backend — request lifecycle through the layers
+
+```mermaid
+flowchart TB
+    REQ([HTTP request]) --> CORS["CORSMiddleware<br/>exact allow-list + preview regex"]
+    CORS --> DEPS{"FastAPI dependencies"}
+
+    DEPS --> AK["require_api_key<br/>X-API-Key · opt-in"]
+    DEPS --> CU["get_current_user<br/>Bearer JWT · opt-in"]
+    DEPS --> RL["_check_rate_limit<br/>10/min per IP · chat only"]
+
+    AK --> RT["Route handler<br/>validate · authorize · delegate"]
+    CU --> RT
+    RL --> RT
+
+    RT --> SVC{"Service layer"}
+    SVC --> MEM["memory.py"]
+    SVC --> VEC["vectorstore.py"]
+    SVC --> INGS["ingestion.py"]
+    SVC --> JOBS["job_queue.py"]
+    SVC --> AUTHS["auth_service.py"]
+
+    MEM --> MONGO[("MongoDB Atlas<br/>users · repos · threads<br/>messages · jobs")]
+    JOBS --> MONGO
+    VEC --> CHROMA[("ChromaDB<br/>/app/data/chroma")]
+    INGS --> DISK[("Uploads<br/>/app/data/uploads")]
+    INGS --> GH["GitHub<br/>clone"]
+    AUTHS --> GHAPI["GitHub API"]
+
+    style RT fill:#7c3aed,color:#fff
+    style MONGO fill:#059669,color:#fff
+    style CHROMA fill:#2563eb,color:#fff
+```
+
+**Why the split matters:** metadata lives in MongoDB (external, durable) while
+vectors and archives live on the container's disk. Those two stores can drift —
+see [Production Limitations](#-production-limitations) — which is why
+`GET /repos` reconciles the stored chunk count against the live index before
+answering.
+
+### Authentication — the OAuth round trip
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant F as Frontend (Vercel)
+    participant A as API (Render)
+    participant G as GitHub
+
+    B->>F: click "Sign in with GitHub"
+    F->>A: GET /auth/github/login
+    A->>A: mint single-use state
+    A-->>B: 302 to GitHub consent
+    B->>G: authorize (scopes: read:user, user:email, repo)
+    G-->>A: GET /auth/github/callback?code&state
+    A->>A: consume_state — rejects replay/CSRF
+    A->>G: exchange code for access token
+    G-->>A: access_token + granted scopes
+    A->>G: GET /user (+ /user/emails if private)
+    A->>A: encrypt token, upsert User, sign JWT
+    A-->>B: 302 to FRONTEND_URL/auth/callback#token=...
+    B->>F: fragment read client-side
+    F->>F: setToken() then strip from URL
+    F->>A: subsequent calls carry Bearer JWT
+```
+
+The session token travels in the URL **fragment**, never the query string:
+fragments are not sent to servers, so the token stays out of access logs,
+proxy logs and the `Referer` header. The callback page persists it and
+immediately rewrites the address bar.
+
+### Ingestion — asynchronous, with a live progress channel
+
+```mermaid
+flowchart LR
+    A["POST /repos/*"] --> B["Create Repository<br/>status: indexing"]
+    B --> C["Create Job<br/>status: pending"]
+    C --> D["202 + job_id"]
+    D -.->|"browser polls 1.5s"| E["Progress bar"]
+
+    C --> F["BackgroundTasks"]
+    F --> G["Fetch source<br/>clone · extract · zip"]
+    G --> H["Filter ignore list"]
+    H --> I["Chunk 1000/200"]
+    I --> J["Embed via Gemini<br/>batch 5 + backoff"]
+    J --> K[("Chroma collection<br/>repo-{id}")]
+    K --> L["Repo: ready<br/>Job: completed"]
+
+    style D fill:#eff6ff
+    style L fill:#ecfdf5
+```
+
+Work continues **after** the response is sent, via FastAPI `BackgroundTasks`.
+That is why the service needs a long-lived process and cannot run on a
+request-scoped serverless platform.
+
+### Chat — a question becoming a grounded answer
+
+```mermaid
+flowchart TB
+    Q(["POST /chat"]) --> RL{"rate limit<br/>10/min per IP"}
+    RL -- exceeded --> R429(["429"])
+    RL -- ok --> TH["load/create Thread<br/>MongoDB"]
+    TH --> GRAPH["LangGraph<br/>classify -> retrieve -> generate"]
+
+    GRAPH --> EMB["embed query"]
+    EMB --> SEARCH[("Chroma<br/>top-k = 8")]
+    SEARCH --> FILT{"score >= 0.25<br/>then >= 60% of best"}
+
+    FILT -- "no chunks survive" --> REFUSE["Insufficient Context<br/><b>no LLM call</b>"]
+    FILT -- "chunks survive" --> LLM["Gemini<br/>mode-specific prompt"]
+
+    LLM --> CITE["build_citations<br/>ranked by score"]
+    REFUSE --> SAVE
+    CITE --> SAVE[("persist Message<br/>+ citations + patch")]
+    SAVE --> RESP(["answer · citations · plan · patch"])
+
+    style REFUSE fill:#fef2f2
+    style SAVE fill:#ecfdf5
+```
+
+The refusal branch is the safety property: with no grounding, the model is
+never called at all. An off-topic question costs ~0.5s and zero tokens instead
+of producing a fluent invention.
+
 ## ⚡ Core Features
 
 ### Six Reasoning Modes
@@ -320,54 +494,82 @@ on violation. Generation is capped per call type to keep free-tier quota usable:
 copilot-reviewer/
 ├── backend/
 │   ├── app/
-│   │   ├── agent/
-│   │   │   ├── graph.py           # StateGraph topology + 5 conditional routers
-│   │   │   ├── llm.py             # Provider factory + per-call token caps
-│   │   │   ├── nodes.py           # classify · retrieve · plan · generate · patch · verify
-│   │   │   ├── prompts.py         # Mode-specific prompt templates
-│   │   │   └── state.py           # AgentState TypedDict
-│   │   ├── api/routes/
-│   │   │   ├── chat.py            # Chat + threads + sliding-window rate limiter
-│   │   │   ├── repo.py            # Ingestion (local · github · zip), files, download
-│   │   │   ├── patch.py           # Unified diff application
-│   │   │   └── jobs.py            # Background job status
+│   │   ├── agent/                     # LangGraph multi-agent engine
+│   │   │   ├── graph.py               # StateGraph topology + 5 conditional routers
+│   │   │   ├── nodes.py               # classify · retrieve · plan · generate · patch · verify
+│   │   │   ├── llm.py                 # Provider factory + per-call token caps
+│   │   │   ├── prompts.py             # Mode-specific prompt templates
+│   │   │   └── state.py               # AgentState TypedDict passed between nodes
+│   │   │
+│   │   ├── api/
+│   │   │   ├── deps.py                # Shared dependencies: API key + session resolution
+│   │   │   └── routes/
+│   │   │       ├── auth.py            # GitHub OAuth, session, GitHub repo listing
+│   │   │       ├── repo.py            # Ingestion (local · github · zip), files, download
+│   │   │       ├── chat.py            # Chat + threads + sliding-window rate limiter
+│   │   │       ├── patch.py           # Unified diff application
+│   │   │       └── jobs.py            # Background job status
+│   │   │
 │   │   ├── models/
-│   │   │   ├── db_models.py       # Beanie documents: Repository, Thread, Message, Job
-│   │   │   └── schemas.py         # Pydantic request/response models
+│   │   │   ├── db_models.py           # Beanie documents: User, Repository, Thread, Message, Job
+│   │   │   └── schemas.py             # Pydantic request/response contracts
+│   │   │
 │   │   ├── services/
-│   │   │   ├── ingestion.py       # Async parser + chunker
-│   │   │   ├── memory.py          # Beanie init + thread/message persistence
-│   │   │   └── vectorstore.py     # Chroma client + batched embedding
+│   │   │   ├── auth_service.py        # JWT sessions, token encryption, OAuth exchange
+│   │   │   ├── ingestion.py           # Clone/extract → filter → chunk → embed → persist
+│   │   │   ├── vectorstore.py         # Chroma client + batched embedding + scored search
+│   │   │   ├── memory.py              # Beanie init + thread/message persistence
+│   │   │   └── job_queue.py           # In-process background job tracking
+│   │   │
 │   │   ├── utils/
-│   │   │   ├── diff_utils.py      # Unified diff parsing/apply
-│   │   │   └── file_parser.py     # Language detection, ignore lists
-│   │   ├── config.py              # Pydantic Settings loader
-│   │   └── main.py                # Lifespan, CORS, router registration
-│   ├── Dockerfile                 # Production image (binds $PORT, no --reload)
+│   │   │   ├── diff_utils.py          # Unified diff parsing and application
+│   │   │   └── file_parser.py         # Language detection, ignore lists
+│   │   │
+│   │   ├── config.py                  # Pydantic Settings — every tunable in one place
+│   │   └── main.py                    # Lifespan, CORS, router registration, /health
+│   │
+│   ├── tests/                         # pytest suites (test_api.py, test_ingestion.py)
+│   ├── Dockerfile                     # Production image — binds $PORT, no --reload
+│   ├── railway.json                   # Alternative host config
 │   ├── .dockerignore
 │   └── requirements.txt
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx           # Landing — hero, tab previews, FAQ
-│   │   │   ├── dashboard/page.tsx # Repo grid/list, search, sort, stats
-│   │   │   ├── ingest/page.tsx    # 3-source ingestion console + live progress
-│   │   │   ├── chat/page.tsx      # Workspace: threads, files, diff, chat
-│   │   │   ├── globals.css        # Design system + animations + markdown styles
-│   │   │   └── layout.tsx         # Root layout, metadata, fonts
-│   │   └── lib/api.ts             # Typed API client
+│   │   ├── app/                       # Next.js App Router
+│   │   │   ├── page.tsx               # Landing — hero, tab previews, FAQ
+│   │   │   ├── dashboard/page.tsx     # Repo grid/list, search, sort, stats
+│   │   │   ├── ingest/page.tsx        # 4-source ingestion console + live progress
+│   │   │   ├── chat/page.tsx          # Workspace: threads, files, diff viewer, chat
+│   │   │   ├── auth/callback/page.tsx # OAuth landing — reads token from URL fragment
+│   │   │   ├── layout.tsx             # Root layout, metadata, fonts
+│   │   │   └── globals.css            # Design system, animations, markdown styles
+│   │   │
+│   │   ├── components/
+│   │   │   └── AuthButton.tsx         # Sign-in control + account menu
+│   │   │
+│   │   └── lib/
+│   │       └── api.ts                 # Typed API client — the ONLY HTTP boundary
+│   │
 │   ├── tailwind.config.js
 │   ├── postcss.config.js
 │   └── package.json
 │
-├── docker-compose.yml             # Local stack: backend, frontend, mongo, chroma
-├── render.yaml                    # Render blueprint (backend)
-├── .env.example
+├── docker-compose.yml                 # Local stack: backend, frontend, mongo, chroma
+├── render.yaml                        # Render blueprint (backend)
+├── .env.example                       # Every environment variable, documented
 └── README.md
 ```
 
----
+### Layer responsibilities
+
+| Layer | Rule it follows |
+| :--- | :--- |
+| **Routes** (`api/routes/`) | Validate input, enforce auth, delegate. No business logic, no direct DB access. |
+| **Services** (`services/`) | Own all I/O — Mongo, Chroma, GitHub, filesystem. Reusable across routes. |
+| **Agent** (`agent/`) | Pure orchestration over `AgentState`. Talks to the vector store and the LLM, nothing else. |
+| **Models** (`models/`) | `db_models` is persistence shape; `schemas` is wire shape. Deliberately separate. |
+| **`lib/api.ts`** | The single place the frontend touches HTTP. Pages never call `fetch` directly. |
 
 ## 🔌 API Reference
 

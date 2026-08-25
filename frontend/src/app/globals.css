@@ -787,3 +787,190 @@ blockquote.bq-critical { border-left-color: var(--error); background: #fef2f2; c
   .responsive-grid { grid-template-columns: 1fr !important; }
   .responsive-hide { display: none !important; }
 }
+
+/* ══════════════════════════════════════════════════════
+   EXTENDED MOTION
+══════════════════════════════════════════════════════ */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+@keyframes progressStripe {
+  from { background-position: 0 0; }
+  to   { background-position: 28px 0; }
+}
+@keyframes checkPop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes ringGrow {
+  from { transform: scale(0.85); opacity: 0.7; }
+  to   { transform: scale(1.45); opacity: 0; }
+}
+@keyframes shimmerSweep {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+
+.animate-scale-in    { animation: scaleIn 0.35s cubic-bezier(0.22,1,0.36,1) forwards; }
+.animate-slide-up    { animation: slideUpFade 0.45s cubic-bezier(0.22,1,0.36,1) forwards; }
+.animate-pulse-soft  { animation: pulseSoft 1.8s ease-in-out infinite; }
+.animate-check-pop   { animation: checkPop 0.42s cubic-bezier(0.22,1,0.36,1) both; }
+
+/* Expanding ring behind an active step marker. */
+.stage-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid var(--primary);
+  animation: ringGrow 1.6s ease-out infinite;
+  pointer-events: none;
+}
+
+/* Moving stripes on an indeterminate/!active progress bar. */
+.progress-striped {
+  background-image: linear-gradient(
+    115deg,
+    rgba(255,255,255,0.28) 25%, transparent 25%,
+    transparent 50%, rgba(255,255,255,0.28) 50%,
+    rgba(255,255,255,0.28) 75%, transparent 75%
+  );
+  background-size: 28px 28px;
+  animation: progressStripe 0.85s linear infinite;
+}
+
+/* Light sweep across a card while work is in flight. */
+.card-sweep { position: relative; overflow: hidden; }
+.card-sweep::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+  animation: shimmerSweep 1.9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Staggered list entrance — set --i on each child. */
+.stagger > * {
+  opacity: 0;
+  animation: slideUpFade 0.45s cubic-bezier(0.22,1,0.36,1) forwards;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+/* ══════════════════════════════════════════════════════
+   CHAT MESSAGE POLISH
+══════════════════════════════════════════════════════ */
+.msg-enter { animation: slideUpFade 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  letter-spacing: -0.015em;
+  scroll-margin-top: 12px;
+}
+
+/* First heading of an answer doubles as its title. */
+.message-content > h2:first-child,
+.message-content > h1:first-child {
+  margin-top: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.message-content ul { list-style: none; padding-left: 4px; }
+.message-content ul li {
+  position: relative;
+  padding-left: 18px;
+}
+.message-content ul li::before {
+  content: "";
+  position: absolute;
+  left: 4px; top: 9px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+  opacity: 0.75;
+}
+
+.message-content ol { padding-left: 22px; }
+.message-content ol li::marker {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.message-content strong {
+  background: linear-gradient(transparent 62%, var(--primary-soft) 62%);
+  padding: 0 1px;
+}
+
+.message-content code {
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.message-content code:hover {
+  background: var(--primary-soft);
+  border-color: var(--border-active);
+}
+
+/* Code block gets a window chrome bar. */
+.code-block-wrap {
+  box-shadow: 0 6px 20px -10px rgba(9, 9, 11, 0.4);
+}
+.code-block-wrap .code-lang {
+  position: relative;
+  padding-left: 58px;
+}
+.code-block-wrap .code-lang::before {
+  content: "";
+  position: absolute;
+  left: 14px; top: 50%;
+  transform: translateY(-50%);
+  width: 34px; height: 8px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle 4px at 4px 50%,  #ff5f57 96%, transparent) ,
+    radial-gradient(circle 4px at 17px 50%, #febc2e 96%, transparent),
+    radial-gradient(circle 4px at 30px 50%, #28c840 96%, transparent);
+}
+
+/* Citation chips lift on hover. */
+.citation-chip {
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.citation-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  background: #fff;
+}
+
+/* Assistant avatar breathes while the model is thinking. */
+.avatar-thinking {
+  position: relative;
+}
+.avatar-thinking::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 2px solid var(--primary);
+  opacity: 0.35;
+  animation: ringGrow 1.6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-ring::after,
+  .card-sweep::after,
+  .avatar-thinking::after,
+  .progress-striped { animation: none !important; }
+  .stagger > * { opacity: 1 !important; }
+}

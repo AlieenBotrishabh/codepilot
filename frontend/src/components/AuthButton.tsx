@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Github, LogOut, Loader2, ShieldCheck, RefreshCw } from "lucide-react";
+import { Github, LogOut, Loader2, ShieldCheck, RefreshCw, UserCircle, Mail } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { api, AuthState } from "../lib/api";
 
 /**
@@ -12,6 +13,7 @@ import { api, AuthState } from "../lib/api";
  * can only produce a 503.
  */
 export default function AuthButton({ compact = false }: { compact?: boolean }) {
+  const router = useRouter();
   const [state, setState] = useState<AuthState | null>(null);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -28,12 +30,12 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
   if (!state.authenticated) {
     return (
       <button
-        onClick={() => { window.location.href = api.githubLoginUrl(); }}
+        onClick={() => router.push("/login")}
         className="!bg-black !text-white !px-4 !py-2 !rounded-full !text-sm !font-medium hover:!bg-gray-800"
-        title="Sign in with GitHub"
+        title="Sign in"
       >
-        <Github className="w-4 h-4" />
-        {compact ? "Sign in" : "Sign in with GitHub"}
+        <UserCircle className="w-4 h-4" />
+        Sign in
       </button>
     );
   }
@@ -72,6 +74,13 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
               <p className="text-xs text-gray-500 truncate">{user.email || `@${user.login}`}</p>
             </div>
 
+            <div className="flex items-center gap-2 px-1 pb-1.5 text-xs text-gray-600">
+              {user.auth_provider === "github"
+                ? <Github className="w-3.5 h-3.5 text-gray-400" />
+                : <Mail className="w-3.5 h-3.5 text-gray-400" />}
+              {user.auth_provider === "github" ? "GitHub account" : "Email account"}
+            </div>
+
             <div className="flex items-center gap-2 px-1 pb-2.5 text-xs text-gray-600">
               <ShieldCheck
                 className={`w-3.5 h-3.5 ${user.can_read_private ? "text-emerald-600" : "text-amber-500"}`}
@@ -95,6 +104,14 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
                 Reconnect for repo access
               </button>
             )}
+
+            <button
+              onClick={() => { setMenuOpen(false); router.push("/account"); }}
+              className="!w-full !justify-start !bg-transparent !text-gray-700 !shadow-none hover:!bg-gray-50 !px-2 !py-2 !rounded-lg !text-sm"
+            >
+              <UserCircle className="w-4 h-4" />
+              My account
+            </button>
 
             <button
               disabled={busy}

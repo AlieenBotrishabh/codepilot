@@ -23,7 +23,9 @@ import {
   FileCode,
 } from "lucide-react";
 import { api, GitHubRepo } from "../../lib/api";
+import { RequireAuth } from "../../lib/auth-context";
 import AuthButton from "../../components/AuthButton";
+import IngestProgressCard from "../../components/IngestProgressCard";
 
 const THEMES = [
   { id: "nebula",  label: "Nebula",  color: "#7c3aed" },
@@ -105,8 +107,8 @@ function IngestWorkspace() {
           setUploadStatus("Ingestion complete!");
           makeToast(setToasts, "✓ Codebase indexed successfully!", "success");
           setTimeout(() => {
-            router.push("/");
-          }, 1500);
+            router.push("/dashboard");
+          }, 1800);
         } else if (job.status === "failed") {
           setActiveJobId(null);
           setErrorMessage(job.error || "Ingestion and indexing failed.");
@@ -480,23 +482,22 @@ function IngestWorkspace() {
                 </div>
               )}
 
-              {/* Progress */}
+              {/* Progress — animated stage card */}
               {activeJobId && (
-                <div className="fade-in rounded-2xl border border-gray-200 bg-gray-50 p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Loader2 className="w-4 h-4 spin text-gray-900 flex-shrink-0" />
-                    <span className="text-sm text-gray-700 flex-1 truncate">{jobMessage}</span>
-                    <span className="text-xs font-semibold text-gray-900 tabular-nums">
-                      {Math.round(jobProgress)}%
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-black rounded-full"
-                      style={{ width: `${jobProgress}%`, transition: "width 0.4s cubic-bezier(0.4,0,0.2,1)" }}
-                    />
-                  </div>
-                </div>
+                <IngestProgressCard
+                  progress={jobProgress}
+                  message={jobMessage}
+                  status="running"
+                />
+              )}
+
+              {/* Completion card, shown briefly before the redirect */}
+              {!activeJobId && uploadStatus && (
+                <IngestProgressCard
+                  progress={100}
+                  message={uploadStatus}
+                  status="done"
+                />
               )}
 
               {/* Alerts */}
@@ -504,12 +505,6 @@ function IngestWorkspace() {
                 <div className="fade-in flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span>{errorMessage}</span>
-                </div>
-              )}
-              {uploadStatus && (
-                <div className="fade-in flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>{uploadStatus}</span>
                 </div>
               )}
 
@@ -585,6 +580,7 @@ function IngestWorkspace() {
 
 export default function IngestPage() {
   return (
+    <RequireAuth>
     <Suspense fallback={
       <div className="flex flex-col items-center justify-center h-screen gap-4">
         <Loader2 className="w-8 h-8 spin text-gray-900" />
@@ -593,5 +589,6 @@ export default function IngestPage() {
     }>
       <IngestWorkspace />
     </Suspense>
+    </RequireAuth>
   );
 }

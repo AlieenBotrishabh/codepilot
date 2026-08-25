@@ -24,11 +24,14 @@ chromadb>=1.5.9
 google-generativeai==0.8.3
 openai==1.58.1
 
-# Auth (GitHub OAuth + session JWTs)
+# Auth (GitHub OAuth + email/password + session JWTs)
+# bcrypt hashes passwords; email-validator backs Pydantic's EmailStr.
 # cryptography is present transitively but pinned here because auth_service
 # uses Fernet directly to encrypt stored GitHub tokens.
 PyJWT==2.10.1
 cryptography>=42.0.0
+bcrypt>=4.1.0
+email-validator==2.2.0
 
 # MongoDB
 motor==3.6.0

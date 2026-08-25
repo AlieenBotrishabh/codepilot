@@ -26,14 +26,23 @@ vector_service = get_vectorstore_service()
 
 
 # ── Ownership ───────────────────────────────────────────────────────────────
-# A repository with owner_id=None predates authentication (or was created while
-# AUTH_REQUIRED was off). Those stay readable by everyone so that switching auth
-# on never silently orphans existing data. Anything WITH an owner is private to
-# that owner.
+# Every repository records the account that created it. Rows with owner_id=None
+# predate accounts; under AUTH_REQUIRED they are hidden from everyone rather than
+# shared, since "visible to all" is what enforcing auth exists to prevent.
 
 def _owns(repo: Repository, user: User | None) -> bool:
+    """Decide whether this caller may see this repository.
+
+    When AUTH_REQUIRED is on, ownership is strict: a repository belongs to
+    exactly one account and nobody else can read it. Ownerless rows — created
+    before accounts existed — become invisible rather than shared, because
+    "visible to everyone" is precisely what enforcing auth is meant to stop.
+
+    With auth off (open demo), ownerless rows stay public so an unauthenticated
+    deployment still works.
+    """
     if repo.owner_id is None:
-        return True
+        return not settings.auth_required
     return user is not None and repo.owner_id == user.user_id
 
 
@@ -236,10 +245,11 @@ async def ingest_local_path(
     repo = Repository(
         repo_id=repo_id,
         name=repo_name,
-        source_type="local_path",
+        source_type="local",
         source_url=str(local_path),
         upload_path=upload_path,
         status="indexing",
+        owner_id=user.user_id if user else None,
     )
     await repo.insert()
 
@@ -363,7 +373,7 @@ async def list_repos(user: User | None = Depends(get_current_user)):
     Reporting the live chunk count makes the drift visible instead of silent.
     """
     repos = await Repository.find_all().to_list()
-    # Hide other users' repositories. Legacy rows (owner_id=None) stay visible.
+    # Hide repositories belonging to other accounts.
     repos = [r for r in repos if _owns(r, user)]
     repo_infos = []
 

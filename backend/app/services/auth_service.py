@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode
 
+import bcrypt
 import httpx
 import jwt
 from cryptography.fernet import Fernet, InvalidToken
@@ -204,12 +205,32 @@ async def upsert_user(profile: dict[str, Any], token: str, scopes: str) -> User:
     github_id = int(profile["id"])
     user = await User.find_one(User.github_id == github_id)
 
+    # Fall back to matching on the verified email. Someone who registered with
+    # a password and later clicks "Continue with GitHub" should land on the SAME
+    # account rather than silently creating a second one they cannot reconcile.
     if user is None:
+        verified_email = profile.get("email")
+        if verified_email:
+            existing = await User.find_one(
+                User.email_lower == normalize_email(verified_email)
+            )
+            if existing is not None:
+                existing.github_id = github_id
+                user = existing
+                logger.info(
+                    "Linked GitHub identity %s to existing account %s",
+                    github_id, existing.email_lower,
+                )
+
+    if user is None:
+        email = profile.get("email")
         user = User(
+            auth_provider="github",
             github_id=github_id,
             login=profile["login"],
             name=profile.get("name"),
-            email=profile.get("email"),
+            email=email,
+            email_lower=normalize_email(email) if email else None,
             avatar_url=profile.get("avatar_url"),
             encrypted_github_token=encrypt_token(token),
             github_scopes=scopes,
@@ -218,9 +239,14 @@ async def upsert_user(profile: dict[str, Any], token: str, scopes: str) -> User:
         logger.info("Registered new user %s (github_id=%s)", user.login, github_id)
     else:
         user.login = profile["login"]
-        user.name = profile.get("name")
-        user.email = profile.get("email")
-        user.avatar_url = profile.get("avatar_url")
+        user.name = profile.get("name") or user.name
+        # Only overwrite the address when GitHub actually supplies one —
+        # otherwise a private GitHub email would wipe the address an email
+        # account registered with.
+        if profile.get("email"):
+            user.email = profile["email"]
+            user.email_lower = normalize_email(profile["email"])
+        user.avatar_url = profile.get("avatar_url") or user.avatar_url
         user.encrypted_github_token = encrypt_token(token)
         user.github_scopes = scopes
         user.last_login_at = utcnow()
@@ -272,3 +298,70 @@ async def list_user_repositories(token: str, per_page: int = 100) -> list[dict[s
         "updated_at": r.get("pushed_at") or r.get("updated_at"),
         "stars": r.get("stargazers_count", 0),
     } for r in repos]
+
+# ── Passwords ──────────────────────────────────────────────────
+
+# bcrypt silently truncates anything past 72 bytes, so two long passwords
+# sharing a 72-byte prefix would validate against each other. Pre-hashing to a
+# fixed-width digest removes the limit entirely and is the standard mitigation.
+# base64 is used rather than raw digest bytes because bcrypt also stops at the
+# first NUL byte, which a raw digest can contain.
+def _prehash(raw: str) -> bytes:
+    digest = hashlib.sha256(raw.encode("utf-8")).digest()
+    return base64.b64encode(digest)
+
+
+MIN_PASSWORD_LENGTH = 8
+
+
+def password_problem(raw: str) -> str | None:
+    """Return a human-readable reason the password is unacceptable, or None."""
+    if len(raw) < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+    if raw.strip() == "":
+        return "Password cannot be only whitespace."
+    return None
+
+
+def hash_password(raw: str) -> str:
+    return bcrypt.hashpw(_prehash(raw), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(raw: str, hashed: str | None) -> bool:
+    """Constant-time check that tolerates a missing or malformed hash.
+
+    Accounts created through GitHub have no password_hash. Returning False
+    rather than raising keeps the login endpoint's timing and error shape
+    identical whether the address is unknown, GitHub-only, or simply wrong.
+    """
+    if not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(_prehash(raw), hashed.encode("utf-8"))
+    except (ValueError, TypeError):
+        logger.warning("Malformed password hash encountered")
+        return False
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+async def find_user_by_email(email: str) -> User | None:
+    return await User.find_one(User.email_lower == normalize_email(email))
+
+
+async def register_email_user(email: str, password: str, name: str | None = None) -> User:
+    """Create an email/password account. Caller must have checked availability."""
+    normalized = normalize_email(email)
+    user = User(
+        auth_provider="email",
+        email=email.strip(),
+        email_lower=normalized,
+        password_hash=hash_password(password),
+        login=normalized.split("@")[0] or normalized,
+        name=(name or "").strip() or None,
+    )
+    await user.insert()
+    logger.info("Registered email account %s", normalized)
+    return user

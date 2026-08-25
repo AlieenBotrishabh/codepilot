@@ -71,9 +71,9 @@ services:
       - key: FRONTEND_URL
         sync: false
 
-      # Flip to true once GitHub OAuth is configured and verified.
+      # Requires a signed-in user and scopes repositories per owner.
       - key: AUTH_REQUIRED
-        value: "false"
+        value: "true"
 
       # ── Non-secret configuration ──
       - key: MONGODB_DB_NAME

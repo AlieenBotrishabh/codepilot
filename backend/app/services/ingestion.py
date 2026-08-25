@@ -123,8 +123,16 @@ class IngestionService:
                 )
                 repo.upload_path = str(upload_dir / f"{zip_filename}.zip")
                 await repo.save()
-            elif repo.source_type == "zip":
-                job.message = "Extracting uploaded zip archive..."
+            elif repo.source_type in ("zip", "local"):
+                # A local-path ingest is already packaged into the same uploads
+                # directory by the route, so from here it is indistinguishable
+                # from an uploaded archive. Handling both in one branch is why
+                # `local` needs no fetch step of its own.
+                job.message = (
+                    "Extracting packaged directory..."
+                    if repo.source_type == "local"
+                    else "Extracting uploaded zip archive..."
+                )
                 await job.save()
                 await extract_zip_file(Path(repo.upload_path), temp_dir)
             else:

@@ -37,8 +37,12 @@ async function fail(res: Response, fallback: string): Promise<never> {
     /* non-JSON error body — keep the fallback */
   }
   // A stale or rotated session should log the user out rather than leaving the
-  // UI in a half-authenticated state that keeps failing.
-  if (res.status === 401) clearToken();
+  // UI in a half-authenticated state that keeps failing. A failed LOGIN also
+  // returns 401 though, and must not clear a session — so only requests that
+  // actually carried a token are treated as expired.
+  if (res.status === 401 && getToken() && !res.url.includes("/auth/login")) {
+    clearToken();
+  }
   throw new Error(detail);
 }
 
@@ -94,8 +98,24 @@ export interface AuthUser {
   name?: string;
   email?: string;
   avatar_url?: string;
+  auth_provider: "github" | "email";
+  has_password: boolean;
   github_connected: boolean;
   can_read_private: boolean;
+  github_scopes?: string | null;
+  created_at?: string | null;
+  last_login_at?: string | null;
+}
+
+export interface AccountStats {
+  repositories: number;
+  repositories_ready: number;
+  private_repositories: number;
+  files_indexed: number;
+  chunks_indexed: number;
+  threads: number;
+  messages: number;
+  languages: string[];
 }
 
 export interface AuthState {
@@ -136,6 +156,36 @@ export const api = {
         github_oauth_configured: false,
       };
     }
+    return res.json();
+  },
+
+  async register(email: string, password: string, name?: string): Promise<AuthUser> {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name: name || undefined }),
+    });
+    if (!res.ok) await fail(res, "Could not create the account.");
+    const data = await res.json();
+    setToken(data.token);
+    return data.user;
+  },
+
+  async login(email: string, password: string): Promise<AuthUser> {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) await fail(res, "Incorrect email or password.");
+    const data = await res.json();
+    setToken(data.token);
+    return data.user;
+  },
+
+  async getAccount(): Promise<{ user: AuthUser; stats: AccountStats }> {
+    const res = await fetch(`${API_BASE}/auth/account`, { headers: authHeaders() });
+    if (!res.ok) await fail(res, "Could not load your account.");
     return res.json();
   },
 

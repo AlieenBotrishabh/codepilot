@@ -14,11 +14,12 @@ Flow:
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, EmailStr, Field
 from fastapi.responses import RedirectResponse
 
 from app.api.deps import get_optional_user, require_user
 from app.config import get_settings
-from app.models.db_models import User
+from app.models.db_models import User, utcnow
 from app.services import auth_service
 
 logger = logging.getLogger("copilot-rag.auth")
@@ -39,6 +40,73 @@ def _frontend_redirect(fragment: str) -> RedirectResponse:
     """
     base = settings.frontend_url.rstrip("/")
     return RedirectResponse(url=f"{base}/auth/callback#{fragment}", status_code=302)
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1)
+    name: str | None = None
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1)
+
+
+def _session_payload(user: User) -> dict:
+    """Shape returned by both register and login."""
+    return {
+        "token": auth_service.create_session_token(user),
+        "user": _public_user(user),
+    }
+
+
+# ── Email + password ────────────────────────────────────────────
+
+@router.post("/auth/register", status_code=status.HTTP_201_CREATED)
+async def register(body: RegisterRequest):
+    """Create an email/password account and return a session immediately."""
+    problem = auth_service.password_problem(body.password)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=problem)
+
+    existing = await auth_service.find_user_by_email(body.email)
+    if existing is not None:
+        # The address is already taken. Whether it belongs to a password account
+        # or a GitHub one changes what the user should do next, so the message
+        # distinguishes them — this reveals nothing an attacker cannot learn by
+        # attempting to register anyway.
+        if existing.has_password:
+            detail = "An account with this email already exists. Sign in instead."
+        else:
+            detail = (
+                "This email is already registered through GitHub. "
+                "Use 'Continue with GitHub' to sign in."
+            )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+    user = await auth_service.register_email_user(body.email, body.password, body.name)
+    return _session_payload(user)
+
+
+@router.post("/auth/login")
+async def login(body: LoginRequest):
+    """Exchange email + password for a session token."""
+    user = await auth_service.find_user_by_email(body.email)
+
+    # One message for every failure mode — unknown address, wrong password, or
+    # a GitHub-only account — so the endpoint cannot be used to enumerate which
+    # addresses are registered.
+    if user is None or not auth_service.verify_password(body.password, user.password_hash):
+        logger.info("Failed password login for %s", auth_service.normalize_email(body.email))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password.",
+        )
+
+    user.last_login_at = utcnow()
+    await user.save()
+    return _session_payload(user)
 
 
 # ── OAuth ───────────────────────────────────────────────────────────────────
@@ -95,6 +163,30 @@ async def github_callback(request: Request, code: str | None = None,
 
 # ── Session ─────────────────────────────────────────────────────────────────
 
+def _public_user(user: User) -> dict:
+    """Everything the account page needs, and nothing secret.
+
+    Deliberately omits password_hash and the encrypted GitHub token; only their
+    presence is reported, as booleans.
+    """
+    return {
+        "user_id": user.user_id,
+        "login": user.login,
+        "name": user.name,
+        "email": user.email,
+        "avatar_url": user.avatar_url,
+        "auth_provider": user.auth_provider,
+        "has_password": user.has_password,
+        "github_connected": bool(
+            auth_service.decrypt_token(user.encrypted_github_token)
+        ),
+        "can_read_private": "repo" in (user.github_scopes or ""),
+        "github_scopes": user.github_scopes,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+    }
+
+
 @router.get("/auth/me")
 async def read_me(user: User | None = Depends(get_optional_user)):
     """Return the current session, or an anonymous marker.
@@ -114,17 +206,7 @@ async def read_me(user: User | None = Depends(get_optional_user)):
         "authenticated": True,
         "auth_required": settings.auth_required,
         "github_oauth_configured": settings.github_oauth_configured,
-        "user": {
-            "user_id": user.user_id,
-            "login": user.login,
-            "name": user.name,
-            "email": user.email,
-            "avatar_url": user.avatar_url,
-            "github_connected": bool(
-                auth_service.decrypt_token(user.encrypted_github_token)
-            ),
-            "can_read_private": "repo" in (user.github_scopes or ""),
-        },
+        "user": _public_user(user),
     }
 
 
@@ -199,4 +281,38 @@ async def list_github_repos(user: User = Depends(require_user)):
         "total": len(repos),
         "can_read_private": can_read_private,
         "granted_scopes": granted,
+    }
+
+
+@router.get("/auth/account")
+async def account_overview(user: User = Depends(require_user)):
+    """Profile plus a usage summary for the account page.
+
+    Counts are scoped to this user, so the numbers match exactly what the
+    dashboard shows them.
+    """
+    from app.models.db_models import Repository, Thread, Message
+
+    repos = await Repository.find(Repository.owner_id == user.user_id).to_list()
+    thread_count = await Thread.find(Thread.owner_id == user.user_id).count()
+
+    repo_ids = [r.repo_id for r in repos]
+    message_count = 0
+    if repo_ids:
+        message_count = await Message.find({"repo_id": {"$in": repo_ids}}).count()
+
+    languages = sorted({lang for r in repos for lang in (r.languages or [])})
+
+    return {
+        "user": _public_user(user),
+        "stats": {
+            "repositories": len(repos),
+            "repositories_ready": sum(1 for r in repos if r.status == "ready"),
+            "private_repositories": sum(1 for r in repos if getattr(r, "is_private", False)),
+            "files_indexed": sum(r.file_count for r in repos),
+            "chunks_indexed": sum(r.chunk_count for r in repos),
+            "threads": thread_count,
+            "messages": message_count,
+            "languages": languages,
+        },
     }

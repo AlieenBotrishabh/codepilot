@@ -74,10 +74,11 @@ class Settings(BaseSettings):
     github_token: str = ""
 
     # ── Authentication ──────────────────────────────────────────
-    # Master switch. When False the API behaves exactly as before: no login,
-    # no per-user scoping, every repository visible to everyone. Turn it on to
-    # require a signed-in user and isolate each user's data.
-    auth_required: bool = False
+    # Master switch. True (the default) requires a signed-in user for every
+    # data endpoint and scopes repositories to their owner. Set it to False
+    # only to run an open public demo — that makes every repository visible
+    # to everyone, which is almost never what you want once accounts exist.
+    auth_required: bool = True
 
     # GitHub OAuth App credentials. Create the app at
     #   https://github.com/settings/developers

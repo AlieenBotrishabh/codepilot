@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { api, Message, Thread, RepoInfo } from "../../lib/api";
+import { RequireAuth } from "../../lib/auth-context";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 const THEMES = [
@@ -1009,7 +1010,7 @@ function ChatWorkspace() {
                   <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for a new line.
                 </p>
 
-                <div className="flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
+                <div className="stagger flex flex-wrap gap-2 justify-center mt-5 max-w-xl">
                   {[
                     { label: "🏗️ Explain project structure", q: "Explain the project structure and main entry point." },
                     { label: "🐛 Find potential bugs", q: "Are there any obvious bugs or safety issues in this codebase?" },
@@ -1017,11 +1018,12 @@ function ChatWorkspace() {
                     { label: "📡 API endpoints", q: "List all API endpoints and their purposes." },
                     { label: "🔒 Security review", q: "Check for security vulnerabilities or unsafe patterns." },
                     { label: "⚡ Performance issues", q: "Identify potential performance bottlenecks." },
-                  ].map(s => (
+                  ].map((s, si) => (
                     <button
                       key={s.label}
                       onClick={() => handleSend(s.q)}
                       disabled={loading}
+                      style={{ ["--i" as any]: si }}
                       className="suggestion-btn !bg-white !text-gray-600 !border !border-gray-200 !px-3.5 !py-2 !text-xs !font-medium !shadow-none"
                     >
                       {s.label}
@@ -1031,12 +1033,13 @@ function ChatWorkspace() {
               </div>
             ) : (
               <div className="flex flex-col gap-5 max-w-3xl w-full mx-auto">
-                {messages.map(m => (
+                {messages.map((m, i) => (
                   <div
                     key={m.message_id}
-                    className={`flex gap-2.5 items-start ${
-                      m.role === "user" ? "justify-end slide-in-right" : "justify-start slide-in-left"
+                    className={`flex gap-2.5 items-start msg-enter ${
+                      m.role === "user" ? "justify-end" : "justify-start"
                     }`}
+                    style={{ animationDelay: `${Math.min(i, 6) * 45}ms` }}
                   >
                     {m.role === "assistant" && (
                       <span className="w-8 h-8 rounded-xl bg-black flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -1045,9 +1048,9 @@ function ChatWorkspace() {
                     )}
 
                     <div
-                      className={`flex flex-col gap-2.5 px-4 py-3.5 rounded-2xl border ${
+                      className={`flex flex-col gap-2.5 px-4 py-3.5 rounded-2xl border transition-shadow hover:shadow-md ${
                         m.role === "user"
-                          ? "bg-gray-50 border-gray-200 max-w-[80%]"
+                          ? "bg-gradient-to-br from-gray-50 to-white border-gray-200 max-w-[80%]"
                           : "bg-white border-gray-200 shadow-sm max-w-[86%]"
                       }`}
                     >
@@ -1102,10 +1105,17 @@ function ChatWorkspace() {
                               <span
                                 key={idx}
                                 title={c.file_path}
-                                className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600"
+                                className="citation-chip inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-600 cursor-default"
                               >
-                                <FileText className="w-2.5 h-2.5" />
-                                {c.file_path.split("/").pop()}
+                                <FileText className="w-2.5 h-2.5 flex-shrink-0" />
+                                <span className="truncate max-w-[140px]">
+                                  {c.file_path.split("/").pop()}
+                                </span>
+                                {typeof c.score === "number" && (
+                                  <span className="text-[9px] font-mono text-gray-400 tabular-nums">
+                                    {c.score.toFixed(2)}
+                                  </span>
+                                )}
                               </span>
                             ))}
                           </div>
@@ -1125,8 +1135,8 @@ function ChatWorkspace() {
 
             {/* Typing indicator */}
             {loading && (
-              <div className="flex gap-2.5 items-start max-w-3xl w-full mx-auto">
-                <span className="w-8 h-8 rounded-xl bg-black flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div className="flex gap-2.5 items-start max-w-3xl w-full mx-auto msg-enter">
+                <span className="avatar-thinking w-8 h-8 rounded-xl bg-black flex items-center justify-center flex-shrink-0 mt-0.5">
                   <Sparkles className="w-3.5 h-3.5 text-white" />
                 </span>
                 <div className="px-4 py-3.5 rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -1203,6 +1213,7 @@ function ChatWorkspace() {
 // ── Page export ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
   return (
+    <RequireAuth>
     <Suspense fallback={
       <div className="flex flex-col items-center justify-center h-screen gap-4">
         <Loader2 className="w-8 h-8 spin text-gray-900" />
@@ -1211,5 +1222,6 @@ export default function ChatPage() {
     }>
       <ChatWorkspace />
     </Suspense>
+    </RequireAuth>
   );
 }

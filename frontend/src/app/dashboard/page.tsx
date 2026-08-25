@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { api, RepoInfo } from "../../lib/api";
+import { RequireAuth } from "../../lib/auth-context";
 import AuthButton from "../../components/AuthButton";
 
 const THEMES = [
@@ -475,6 +476,7 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
+    <RequireAuth>
     <Suspense fallback={
       <div className="flex flex-col items-center justify-center h-screen gap-4">
         <Loader2 className="w-8 h-8 spin text-gray-900" />
@@ -483,5 +485,6 @@ export default function DashboardPage() {
     }>
       <DashboardContent />
     </Suspense>
+    </RequireAuth>
   );
 }

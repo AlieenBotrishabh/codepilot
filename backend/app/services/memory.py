@@ -2,6 +2,7 @@
 CodePilot RAG — Database and Memory Service
 Initializes Beanie (MongoDB) and manages conversation history.
 """
+import logging
 from typing import Any
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
@@ -11,13 +12,56 @@ from app.config import get_settings
 from app.models.db_models import Repository, Thread, Message, Job, User
 
 settings = get_settings()
+logger = logging.getLogger("copilot-rag.memory")
+
+
+async def _drop_legacy_user_indexes(database) -> None:
+    """Remove pre-existing non-sparse unique indexes on the users collection.
+
+    Earlier versions declared `github_id` with Indexed(int, unique=True), which
+    produced a plain unique index named `github_id_1`. That index treats every
+    missing value as the same null, so once `github_id` became optional it would
+    reject the SECOND email-only signup with a duplicate-key error.
+
+    MongoDB cannot change an index's options in place, so the old one is dropped
+    and Beanie recreates the sparse replacement on the next line. Dropping is
+    safe: uniqueness is immediately re-established by the new index.
+    """
+    try:
+        existing = await database["users"].index_information()
+    except Exception as exc:  # collection may not exist yet on a fresh install
+        logger.debug("Could not read user indexes (fresh database?): %s", exc)
+        return
+
+    for name, spec in existing.items():
+        if name == "_id_":
+            continue
+        keys = [k for k, _ in spec.get("key", [])]
+        if keys not in (["github_id"], ["email_lower"]):
+            continue
+        if not spec.get("unique"):
+            continue
+        # Keep only indexes that exclude nulls via a partial filter. Plain and
+        # sparse unique indexes both index explicit nulls, which blocks the
+        # second account that leaves the field unset.
+        if "partialFilterExpression" in spec:
+            continue
+        try:
+            await database["users"].drop_index(name)
+            logger.info("Dropped unique index '%s' that would index nulls", name)
+        except Exception as exc:
+            logger.warning("Could not drop index '%s': %s", name, exc)
 
 
 async def init_db() -> None:
     """Initialize MongoDB connection and Beanie ODM."""
     client = AsyncIOMotorClient(settings.mongodb_url)
+    database = client[settings.mongodb_db_name]
+
+    await _drop_legacy_user_indexes(database)
+
     await init_beanie(
-        database=client[settings.mongodb_db_name],
+        database=database,
         document_models=[Repository, Thread, Message, Job, User],
     )
 
