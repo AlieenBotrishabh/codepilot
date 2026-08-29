@@ -137,30 +137,89 @@ def consume_state(state: str | None) -> bool:
     return True
 
 
+class OAuthExchangeError(RuntimeError):
+    """GitHub refused the authorization code.
+
+    Carries GitHub's own machine-readable code so the caller can tell the user
+    something specific instead of "check your credentials", which is only one
+    of several possible causes.
+    """
+
+    def __init__(self, code: str, description: str = ""):
+        self.code = code
+        self.description = description
+        super().__init__(f"{code}: {description}" if description else code)
+
+
 async def exchange_code_for_token(code: str, redirect_uri: str) -> tuple[str, str]:
-    """Trade an authorization code for an access token. Returns (token, scopes)."""
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            GITHUB_TOKEN_URL,
-            headers={"Accept": "application/json"},
-            data={
-                "client_id": settings.github_client_id,
-                "client_secret": settings.github_client_secret,
-                "code": code,
-                "redirect_uri": redirect_uri,
-            },
+    """Trade an authorization code for an access token. Returns (token, scopes).
+
+    Credentials are stripped from any error surfaced here — a misconfigured
+    secret must never reach a log line or a redirect URL.
+    """
+    if not settings.github_client_id or not settings.github_client_secret:
+        raise OAuthExchangeError(
+            "not_configured",
+            "GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET is empty on the server",
         )
-    resp.raise_for_status()
-    payload = resp.json()
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.post(
+                GITHUB_TOKEN_URL,
+                headers={"Accept": "application/json"},
+                data={
+                    "client_id": settings.github_client_id,
+                    # .strip() because a secret pasted into a dashboard field
+                    # very often carries a trailing newline or space, which
+                    # GitHub rejects as incorrect_client_credentials.
+                    "client_secret": settings.github_client_secret.strip(),
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise OAuthExchangeError("network_error", str(exc)[:200]) from None
+
+    # GitHub does not always answer with a JSON error object. A client_id that
+    # matches no OAuth App yields a bare 404, which previously surfaced as
+    # "try again shortly" — the one thing that will never help.
+    if resp.status_code == 404:
+        raise OAuthExchangeError(
+            "unknown_client",
+            "No OAuth App matches this client ID",
+        )
+    if resp.status_code in (401, 403):
+        raise OAuthExchangeError(
+            "incorrect_client_credentials",
+            f"GitHub rejected the credentials (HTTP {resp.status_code})",
+        )
+    if resp.status_code >= 500:
+        raise OAuthExchangeError(
+            "github_unavailable",
+            f"GitHub returned HTTP {resp.status_code}",
+        )
+    if resp.status_code != 200:
+        raise OAuthExchangeError(
+            "http_error", f"GitHub returned HTTP {resp.status_code}"
+        )
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        raise OAuthExchangeError("bad_response", "GitHub returned a non-JSON body") from None
 
     # GitHub reports failures with HTTP 200 and an "error" key, so the status
     # code alone is not a sufficient success check.
     if "error" in payload:
-        raise ValueError(payload.get("error_description") or payload["error"])
+        raise OAuthExchangeError(
+            str(payload["error"]),
+            str(payload.get("error_description", ""))[:200],
+        )
 
     token = payload.get("access_token")
     if not token:
-        raise ValueError("GitHub did not return an access token")
+        raise OAuthExchangeError("no_token", "GitHub did not return an access token")
     return token, payload.get("scope", "")
 
 

@@ -148,15 +148,39 @@ async def github_callback(request: Request, code: str | None = None,
         logger.warning("GitHub OAuth callback with invalid or reused state")
         return _frontend_redirect("error=invalid_state")
 
+    # Each step is caught separately. Previously all three shared one handler
+    # that reported "check your OAuth credentials", which is wrong for two of
+    # them and gives the operator nothing to act on.
+    redirect_uri = _callback_url(request)
+
     try:
-        token, scopes = await auth_service.exchange_code_for_token(
-            code, _callback_url(request)
+        token, scopes = await auth_service.exchange_code_for_token(code, redirect_uri)
+    except auth_service.OAuthExchangeError as exc:
+        logger.error(
+            "GitHub token exchange rejected (%s): %s | redirect_uri=%s",
+            exc.code, exc.description, redirect_uri,
         )
-        profile = await auth_service.fetch_github_profile(token)
-        user = await auth_service.upsert_user(profile, token, scopes)
+        # GitHub's error codes are diagnostic, not secret, so passing the code
+        # through lets the UI say what is actually wrong.
+        return _frontend_redirect(f"error=token_exchange&reason={exc.code}")
     except Exception as exc:
-        logger.error("GitHub OAuth exchange failed: %s", exc)
-        return _frontend_redirect("error=exchange_failed")
+        logger.exception("Unexpected error during GitHub token exchange")
+        return _frontend_redirect("error=token_exchange&reason=unexpected")
+
+    try:
+        profile = await auth_service.fetch_github_profile(token)
+    except Exception:
+        logger.exception("Could not read the GitHub profile after a valid exchange")
+        return _frontend_redirect("error=profile_fetch")
+
+    try:
+        user = await auth_service.upsert_user(profile, token, scopes)
+    except Exception:
+        # Full traceback: this is a database problem on our side, and the stack
+        # is the only way to tell a duplicate key from a schema mismatch.
+        logger.exception("Could not save the account for GitHub user %s",
+                         profile.get("login"))
+        return _frontend_redirect("error=account_save")
 
     return _frontend_redirect(f"token={auth_service.create_session_token(user)}")
 

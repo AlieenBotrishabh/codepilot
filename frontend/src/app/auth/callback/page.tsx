@@ -14,19 +14,52 @@ import { setToken } from "../../../lib/api";
  * It is read client-side, persisted, and immediately stripped from the URL.
  */
 
+/** Top-level failure, keyed by the `error` fragment value. */
 const ERROR_COPY: Record<string, string> = {
   access_denied: "You cancelled the GitHub authorization.",
   invalid_state:
-    "This sign-in link has expired or was already used. Please try signing in again.",
-  exchange_failed:
-    "GitHub accepted the sign-in but the token exchange failed. Check the server's GitHub OAuth credentials.",
+    "This sign-in link has expired or was already used. Please start again from the login page.",
   missing_code: "GitHub did not return an authorization code.",
+  token_exchange: "GitHub could not complete the sign-in.",
+  profile_fetch:
+    "Sign-in succeeded but your GitHub profile could not be read. This is usually a temporary GitHub API problem.",
+  account_save:
+    "Sign-in succeeded but your account could not be saved. This is a problem on our side, not with GitHub.",
+  // Kept so links issued by an older build still render something sensible.
+  exchange_failed: "GitHub could not complete the sign-in.",
+};
+
+/**
+ * Second-level detail for token_exchange, keyed by GitHub's own error code.
+ *
+ * Each entry names the concrete misconfiguration, because "check your
+ * credentials" sends people to re-paste a secret that was often fine — the
+ * redirect_uri and an expired code are far more common causes.
+ */
+const REASON_COPY: Record<string, string> = {
+  not_configured:
+    "The server has no GitHub client ID or secret set. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
+  incorrect_client_credentials:
+    "GitHub rejected the client ID or secret. Re-copy the secret from the OAuth App — a trailing space or newline is the usual culprit.",
+  redirect_uri_mismatch:
+    "The callback URL does not match the one registered on the OAuth App. It must match exactly, including https and no trailing slash.",
+  bad_verification_code:
+    "The authorization code was already used or has expired. Codes are single-use — start the sign-in again.",
+  unknown_client:
+    "No GitHub OAuth App matches the configured client ID. Check GITHUB_CLIENT_ID against the App on github.com/settings/developers.",
+  github_unavailable: "GitHub is having trouble right now. Try again shortly.",
+  network_error: "The server could not reach GitHub. Try again shortly.",
+  http_error: "GitHub returned an unexpected status. Try again shortly.",
+  bad_response: "GitHub returned a response we could not parse.",
+  no_token: "GitHub completed the handshake without issuing a token.",
+  unexpected: "An unexpected error occurred while contacting GitHub.",
 };
 
 function CallbackHandler() {
   const router = useRouter();
   const [status, setStatus] = useState<"working" | "ok" | "error">("working");
   const [message, setMessage] = useState("Completing sign-in…");
+  const [detail, setDetail] = useState("");
 
   useEffect(() => {
     // The fragment is only available client-side — this cannot run on the server.
@@ -37,10 +70,13 @@ function CallbackHandler() {
 
     const token = params.get("token");
     const error = params.get("error");
+    const reason = params.get("reason");
 
     if (error) {
       setStatus("error");
       setMessage(ERROR_COPY[error] || `Sign-in failed: ${error}`);
+      // The reason narrows a token_exchange failure to an actionable cause.
+      setDetail(reason ? (REASON_COPY[reason] || `GitHub reported: ${reason}`) : "");
       return;
     }
 
@@ -99,12 +135,27 @@ function CallbackHandler() {
               </span>
               <h1 className="text-xl font-semibold tracking-tight">Sign-in failed</h1>
               <p className="text-sm text-gray-600 leading-relaxed">{message}</p>
-              <button
-                onClick={() => router.replace("/dashboard")}
-                className="!bg-black !text-white !px-6 !py-2.5 !rounded-full !text-sm !font-medium hover:!bg-gray-800 mt-2"
-              >
-                Back to dashboard
-              </button>
+
+              {detail && (
+                <div className="w-full text-left rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mt-1">
+                  <p className="text-xs text-amber-800 leading-relaxed">{detail}</p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                <button
+                  onClick={() => router.replace("/login")}
+                  className="!bg-black !text-white !px-6 !py-2.5 !rounded-full !text-sm !font-medium hover:!bg-gray-800"
+                >
+                  Try again
+                </button>
+                <button
+                  onClick={() => router.replace("/login")}
+                  className="secondary !px-6 !py-2.5 !rounded-full !text-sm !font-medium"
+                >
+                  Use email instead
+                </button>
+              </div>
             </>
           )}
         </div>
