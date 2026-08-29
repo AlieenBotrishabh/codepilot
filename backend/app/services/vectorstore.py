@@ -19,16 +19,33 @@ settings = get_settings()
 
 
 def get_embedding_function():
-    """Return the appropriate embedding function based on config."""
+    """Return the embedding client for the configured provider.
+
+    IMPORTANT: embeddings from different models are not interchangeable. They
+    differ in dimensionality and in what "similar" means, so switching provider
+    invalidates every existing Chroma collection — queries either fail on a
+    dimension mismatch or return meaningless neighbours. Changing this setting
+    requires deleting and re-ingesting each repository, and re-measuring
+    RETRIEVAL_MIN_SCORE, which was calibrated against the previous model.
+    """
     if settings.llm_provider == "gemini":
         return GoogleGenerativeAIEmbeddings(
             model=settings.embedding_model,
             google_api_key=settings.google_api_key,
         )
-    return OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        api_key=settings.openai_api_key,
+
+    # OpenAI-compatible embeddings (OpenAI, NVIDIA NIM, ...).
+    kwargs = dict(
+        model=settings.active_embedding_model,
+        api_key=settings.active_api_key,
     )
+    base_url = settings.active_base_url
+    if base_url:
+        kwargs["base_url"] = base_url
+        # NIM rejects the tiktoken-based batching OpenAIEmbeddings does by
+        # default; sending plain strings keeps it compatible.
+        kwargs["check_embedding_ctx_length"] = False
+    return OpenAIEmbeddings(**kwargs)
 
 
 def get_chroma_client():

@@ -33,6 +33,22 @@ async def lifespan(app: FastAPI):
         logger.error(f"MongoDB initialization failed: {e}")
         sys.exit(1)
 
+    # Surfacing the resolved provider makes a misconfiguration obvious in the
+    # first lines of the log rather than as a confusing 401 on the first chat.
+    logger.info(
+        "LLM provider: %s | chat=%s | embeddings=%s | endpoint=%s | key=%s",
+        settings.llm_provider,
+        settings.active_chat_model,
+        settings.active_embedding_model,
+        settings.active_base_url or "provider default",
+        "set" if settings.active_api_key else "MISSING",
+    )
+    if not settings.active_api_key:
+        logger.error(
+            "No API key for provider '%s'. Chat and ingestion will fail until "
+            "the matching *_API_KEY is set.", settings.llm_provider,
+        )
+
     logger.info("Testing ChromaDB connection...")
     try:
         client = get_chroma_client()

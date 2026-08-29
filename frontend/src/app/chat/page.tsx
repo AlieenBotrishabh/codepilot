@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { api, Message, Thread, RepoInfo } from "../../lib/api";
 import { RequireAuth } from "../../lib/auth-context";
+import MermaidBlock from "../../components/MermaidBlock";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 const THEMES = [
@@ -222,6 +223,33 @@ function renderMarkdown(rawText: string): string {
  * '&' must be replaced first, otherwise the entities introduced by the later
  * replacements would themselves be re-escaped into visible text.
  */
+type Segment = { type: "text" | "mermaid"; value: string };
+
+/**
+ * Split raw message content into prose and mermaid segments.
+ *
+ * Only ```mermaid fences are extracted — every other fence stays in the text
+ * stream so it still renders as a normal code block.
+ */
+function splitMermaid(content: string): Segment[] {
+  const re = /```mermaid\s*([\s\S]*?)```/g;
+  const out: Segment[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = re.exec(content)) !== null) {
+    if (m.index > last) {
+      out.push({ type: "text", value: content.slice(last, m.index) });
+    }
+    out.push({ type: "mermaid", value: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < content.length) {
+    out.push({ type: "text", value: content.slice(last) });
+  }
+  return out.length ? out : [{ type: "text", value: content }];
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -240,7 +268,11 @@ function MessageContent({ content, mode }: { content: string; mode?: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const html = renderMarkdown(content);
+  // Mermaid fences are pulled out and rendered as real diagrams; everything
+  // else still goes through renderMarkdown, so the HTML-escaping guarantee is
+  // untouched for prose. Splitting here rather than inside renderMarkdown keeps
+  // that function a pure string->string transform.
+  const segments = splitMermaid(content);
 
   // Mode-specific accent colour for the left border
   const modeColor: Record<string, string> = {
@@ -257,8 +289,18 @@ function MessageContent({ content, mode }: { content: string; mode?: string }) {
       <div
         className="message-content"
         style={{ borderLeft: `2px solid ${accent}`, paddingLeft: 12 }}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      >
+        {segments.map((seg, i) =>
+          seg.type === "mermaid" ? (
+            <MermaidBlock key={i} chart={seg.value} />
+          ) : (
+            <div
+              key={i}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.value) }}
+            />
+          )
+        )}
+      </div>
       <button
         onClick={handleCopy}
         className="ghost absolute top-0 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity !bg-white !border !border-gray-200"

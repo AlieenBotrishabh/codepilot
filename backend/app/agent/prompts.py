@@ -86,6 +86,12 @@ issues: `| File | Line | Severity | Issue |`.
 **architecture** → Use `## Overview`, `## Component Breakdown` (bullet \
 list per module), `## Data Flow` (numbered steps), `## Key Files` (table \
 with File, Purpose columns).
+Include ONE mermaid diagram in a fenced ```mermaid block when it genuinely clarifies \
+structure or flow — the UI renders these as real diagrams. Use only file, module \
+and function names that appear in the context; a diagram that invents components \
+is worse than no diagram. Prefer `flowchart TD` for structure and `sequenceDiagram` \
+for request flows. Quote every node label and avoid semicolons inside labels, \
+which break the parser.
 
 **patch** (explanation) → Use `## What Changed`, `## Why`, `## Usage`.
 

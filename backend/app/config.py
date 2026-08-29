@@ -46,11 +46,25 @@ class Settings(BaseSettings):
         return v
 
     # ── LLM Provider ────────────────────────────────────────────
-    llm_provider: Literal["gemini", "openai"] = "gemini"
+    llm_provider: Literal["gemini", "openai", "nvidia"] = "gemini"
     google_api_key: str = ""
     openai_api_key: str = ""
     gemini_model: str = "gemini-1.5-pro"
     openai_model: str = "gpt-4o"
+
+    # Base URL for the OpenAI-compatible client. Leave empty for OpenAI itself;
+    # set it to point at any compatible gateway (NVIDIA NIM, Groq, Together,
+    # OpenRouter, a local vLLM). This is the single knob that turns the existing
+    # OpenAI branch into a universal one.
+    openai_base_url: str = ""
+
+    # ── NVIDIA NIM ──────────────────────────────────────────────
+    # NIM speaks the OpenAI protocol, so it reuses the same client classes with
+    # a different host and key. Get a key at https://build.nvidia.com
+    nvidia_api_key: str = ""
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_model: str = "deepseek-ai/deepseek-v3.1"
+    nvidia_embedding_model: str = "nvidia/nv-embedqa-e5-v5"
 
     # ── Embeddings ──────────────────────────────────────────────
     embedding_model: str = "models/text-embedding-004"
@@ -100,6 +114,41 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expiry_hours: int = 24 * 7
+
+    @property
+    def is_openai_compatible(self) -> bool:
+        """True when the OpenAI client classes should be used."""
+        return self.llm_provider in ("openai", "nvidia")
+
+    @property
+    def active_api_key(self) -> str:
+        if self.llm_provider == "nvidia":
+            return self.nvidia_api_key
+        if self.llm_provider == "openai":
+            return self.openai_api_key
+        return self.google_api_key
+
+    @property
+    def active_base_url(self) -> str | None:
+        if self.llm_provider == "nvidia":
+            return self.nvidia_base_url or None
+        return self.openai_base_url or None
+
+    @property
+    def active_chat_model(self) -> str:
+        if self.llm_provider == "nvidia":
+            return self.nvidia_model
+        if self.llm_provider == "openai":
+            return self.openai_model
+        return self.gemini_model
+
+    @property
+    def active_embedding_model(self) -> str:
+        if self.llm_provider == "nvidia":
+            return self.nvidia_embedding_model
+        if self.llm_provider == "openai":
+            return self.embedding_model or "text-embedding-3-small"
+        return self.embedding_model
 
     @property
     def effective_jwt_secret(self) -> str:

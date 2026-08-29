@@ -43,11 +43,20 @@ def get_llm(
         if max_tokens:
             kwargs["max_output_tokens"] = max_tokens
         return ChatGoogleGenerativeAI(**kwargs)
-    return ChatOpenAI(
-        model=settings.openai_model,
-        api_key=settings.openai_api_key,
+
+    # OpenAI-compatible path — serves OpenAI itself, NVIDIA NIM, and any other
+    # gateway speaking the same protocol. Only the host and key differ, which is
+    # why NIM needs no client of its own.
+    kwargs = dict(
+        model=model or settings.active_chat_model,
+        api_key=settings.active_api_key,
         temperature=temperature,
         streaming=streaming,
         request_timeout=45,
         max_tokens=max_tokens,
+        max_retries=2,
     )
+    base_url = settings.active_base_url
+    if base_url:
+        kwargs["base_url"] = base_url
+    return ChatOpenAI(**kwargs)
